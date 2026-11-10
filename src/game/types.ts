@@ -47,6 +47,8 @@ export interface TeamData {
 }
 
 export type StadiumId = 'day' | 'night' | 'rain';
+export type AssistLevel = 'full' | 'semi' | 'manual';
+export type GraphicsLevel = 'low' | 'medium' | 'high';
 
 export interface MatchConfig {
   home: TeamData; // команда игрока
@@ -57,6 +59,8 @@ export interface MatchConfig {
   difficulty: 0 | 1 | 2;
   halfMinutes: 2 | 4 | 6;
   formation: FormationName;
+  assist: AssistLevel;
+  graphics: GraphicsLevel;
 }
 
 export interface TeamStats {

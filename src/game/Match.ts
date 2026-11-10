@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Ball, ROLL_K } from './Ball';
 import {
-  ALLY_AI, BALL_R, CIRCLE_R, DIFFICULTIES, GOAL_HW, GRAVITY, HALF_L, HALF_W, KICKOFF_PARTNER, PEN_D, PEN_HW, PEN_SPOT,
+  ALLY_AI, ASSISTS, BALL_R, CIRCLE_R, DIFFICULTIES, GOAL_HW, GRAVITY, HALF_L, HALF_W, KICKOFF_PARTNER, PEN_D, PEN_HW, PEN_SPOT,
   angleLerp, clamp, gauss, rand,
 } from './constants';
 import { aiCarrier, aiGK, aiHold, aiOffBall, bestPass, computeContext, formationTarget, inOppBox, inOwnBox, laneOpen, newCtx } from './AI';
@@ -77,9 +77,15 @@ export class Match {
   difficulty: number;
   /** ИИ управляет и командой игрока (для тестов/демо). */
   autoplay = false;
+  assist: (typeof ASSISTS)[keyof typeof ASSISTS];
+  /** Партнёр, которому уйдёт пас при нажатии (для индикатора). */
+  passPreview: Player | null = null;
+  /** Игрок зажал «Прессинг» — партнёр тоже идёт в отбор. */
+  humanPress = false;
 
   constructor(public cfg: MatchConfig) {
     this.difficulty = cfg.difficulty;
+    this.assist = ASSISTS[cfg.assist ?? 'full'];
     const home = new Team(0, cfg.home, cfg.homeKit, cfg.formation, 1, true, ALLY_AI);
     const away = new Team(1, cfg.away, cfg.awayKit, cfg.away.formation, -1, false, DIFFICULTIES[cfg.difficulty]);
     home.opp = away; away.opp = home;
@@ -186,6 +192,17 @@ export class Match {
       else if (this.ball.owner === p) aiCarrier(this, p, dt);
       else aiOffBall(this, p, dt);
     }
+    // выпад при отборе: игрок сам тянется к мячу
+    for (const p of this.players) {
+      p.accelMul = p === this.controlled && !this.autoplay ? 1.45 : 1;
+      if (p.tackleT > 0 && !p.busy) {
+        _w.subVectors(this.ball.pos, p.pos).setY(0);
+        const d = _w.length();
+        if (d > 0.05) p.desired.copy(_w.multiplyScalar(Math.max(p.sprintSpeed(), 7.5) / d));
+        if (!p.tackleDone && d < 1.15) { p.tackleDone = true; this.resolveTackle(p); }
+        if (p.tackleT <= 0.02 && !p.tackleDone) { p.tackleDone = true; p.stunT = 0.22; }
+      }
+    }
     this.stepPlayers(dt);
     this.slideChecks();
     if (!this.ball.owner) {
@@ -230,32 +247,55 @@ export class Match {
   }
 
   // ───────────────────────── управление игроком ─────────────────────────
+  /** Команда игрока обороняется (мяч у соперника). */
+  humanDefending() {
+    const o = this.ball.owner;
+    return !!o && o.team !== this.teams[0];
+  }
+
+  private pickDefender(team: Team, exclude: Player | null) {
+    // ближайший к мячу и стоящий между мячом и своими воротами
+    const ref = this.ball.owner ? this.ball.owner.pos : this.ball.pos;
+    let best: Player | null = null, bs = 1e9;
+    for (const p of team.players) {
+      if (p.isGK || p === exclude) continue;
+      const d = p.dist2D(ref);
+      const goalSide = (p.pos.x - ref.x) * -team.dir > -1;
+      const sc = d + (goalSide ? 0 : 5);
+      if (sc < bs) { bs = sc; best = p; }
+    }
+    return best;
+  }
+
   private updateHuman(dt: number, inp: InputFrame) {
     const team = this.teams[0];
     const ball = this.ball;
     const owner = ball.owner;
+    const defending = !!owner && owner.team !== team;
     if (owner && owner.team === team && !owner.isGK) {
       this.controlled = owner;
     } else if (inp.switchP) {
-      const cands = team.players.filter(p => !p.isGK && p !== this.controlled)
-        .sort((a, b) => a.dist2D(ball.pos) - b.dist2D(ball.pos));
-      if (cands[0]) { this.controlled = cands[0]; this.lastSwitch = this.time; }
-    } else if (this.controlled.isGK || this.time - this.lastSwitch > 0.7) {
+      const cand = defending ? this.pickDefender(team, this.controlled)
+        : team.players.filter(p => !p.isGK && p !== this.controlled).sort((a, b) => a.dist2D(ball.pos) - b.dist2D(ball.pos))[0];
+      if (cand) { this.controlled = cand; this.lastSwitch = this.time; }
+    } else if (this.controlled.isGK || this.time - this.lastSwitch > 0.6) {
       let cand: Player | null = null;
       const c0 = this.ctx[0].chaser;
-      if (!owner && c0 && !c0.isGK) cand = c0;
+      if (ball.intended && ball.intended.team === team && !ball.intended.isGK) cand = ball.intended;
+      else if (defending) cand = this.pickDefender(team, null);
+      else if (!owner && c0 && !c0.isGK) cand = c0;
       else {
-        const ref = owner ? owner.pos : ball.pos;
         let bd = 1e9;
         for (const p of team.players) {
           if (p.isGK) continue;
-          const d = p.dist2D(ref);
+          const d = p.dist2D(ball.pos);
           if (d < bd) { bd = d; cand = p; }
         }
       }
-      if (cand && cand !== this.controlled) {
+      if (cand && cand !== this.controlled && !this.controlled.busy) {
         const ref = owner ? owner.pos : ball.pos;
-        if (this.controlled.isGK || cand.dist2D(ref) + 2.5 < this.controlled.dist2D(ref)) {
+        const busyHere = this.controlled.tackleT > 0;
+        if (!busyHere && (this.controlled.isGK || cand === ball.intended || cand.dist2D(ref) + 2.5 < this.controlled.dist2D(ref))) {
           this.controlled = cand;
           this.lastSwitch = this.time;
         }
@@ -263,44 +303,90 @@ export class Match {
     }
 
     const c = this.controlled;
+    const A = this.assist;
     c.lookAt = ball.pos;
     _v.set(inp.mx, 0, -inp.my);
     const mag = Math.min(1, _v.length());
-    if (!c.busy) {
+    this.humanPress = defending && inp.press;
+    if (!c.busy && c.tackleT <= 0) {
       const spd = inp.sprint ? c.sprintSpeed() : c.jogSpeed();
       if (mag > 0.05) c.desired.copy(_v).normalize().multiplyScalar(spd * mag);
-      else c.desired.set(0, 0, 0);
+      else if (ball.intended === c && A.autoReceive) {
+        // сам бежит навстречу мячу и останавливается в точке приёма
+        this.steer(c, this.ctx[0].chasePoint, true, 0.1);
+      } else if (this.humanPress && owner) {
+        // сдерживание: встаёт между мячом и воротами
+        _w.set(-team.dir * HALF_L - owner.pos.x, 0, -owner.pos.z).normalize();
+        const tgt = owner.pos.clone().addScaledVector(owner.vel, 0.2).addScaledVector(_w, 1.3);
+        this.steer(c, tgt, c.dist2D(tgt) > 3, 0.2);
+      } else c.desired.set(0, 0, 0);
     }
-    const dirHint = mag > 0.2 ? _v.clone().normalize() : c.forward();
+    const dirHint = mag > 0.2 ? _v.clone().normalize() : null;
+    this.passPreview = owner === c && dirHint ? this.chooseReceiver(c, dirHint, false) : null;
 
-    if (inp.shootHeld) { this.shootPower = Math.min(1, this.shootPower + dt * 1.0); this.charging = true; }
+    if (inp.shootHeld && !defending) { this.shootPower = Math.min(1, this.shootPower + dt * 1.0); this.charging = true; }
     if (inp.shootReleased && this.charging) {
       const power = Math.max(0.2, this.shootPower);
       this.charging = false;
       this.shootPower = 0;
       if (owner === c) this.humanShoot(c, power, inp);
-      else this.pending = { type: 'shoot', power, t: this.time, dir: dirHint };
+      else this.pending = { type: 'shoot', power, t: this.time, dir: dirHint ?? c.forward() };
     }
     if (inp.pass) {
-      if (owner === c) this.passTo(c, this.chooseReceiver(c, dirHint, false), dirHint, false, 1);
+      if (owner === c) this.humanPass(c, dirHint, false);
       else if (owner && owner.team === team && owner.isGK && ball.heldByGK) this.gkDistribute(owner, dirHint, false);
-      else if (owner && owner.team !== team) this.tryTackle(c);
-      else this.pending = { type: 'pass', power: 0, t: this.time, dir: dirHint };
+      else if (!owner) this.pending = { type: 'pass', power: 0, t: this.time, dir: dirHint ?? c.forward() };
     }
     if (inp.lob) {
-      if (owner === c) this.passTo(c, this.chooseReceiver(c, dirHint, true), dirHint, true, 1);
+      if (owner === c) this.humanPass(c, dirHint, true);
       else if (owner && owner.team === team && owner.isGK && ball.heldByGK) this.gkDistribute(owner, dirHint, true);
-      else if (!owner) this.pending = { type: 'lob', power: 0, t: this.time, dir: dirHint };
+      else if (!owner) this.pending = { type: 'lob', power: 0, t: this.time, dir: dirHint ?? c.forward() };
     }
-    if (inp.tackle && owner !== c) this.startSlide(c);
+    if (inp.tackle && defending) this.tryTackle(c);
+    if (inp.slide && owner !== c) this.startSlide(c);
+  }
+
+  private steer(p: Player, target: THREE.Vector3, sprint: boolean, stopDist: number) {
+    const dx = target.x - p.pos.x, dz = target.z - p.pos.z;
+    const d = Math.hypot(dx, dz);
+    if (d < stopDist) { p.desired.set(0, 0, 0); return; }
+    const sp = Math.min(sprint ? p.sprintSpeed() : p.jogSpeed(), d * 2.2);
+    p.desired.set((dx / d) * sp, 0, (dz / d) * sp);
+  }
+
+  /** Пас игрока с учётом уровня ассиста. */
+  private humanPass(c: Player, dir: THREE.Vector3 | null, lob: boolean) {
+    const A = this.assist;
+    if (this.cfg.assist === 'manual') {
+      // ручной: строго по направлению, сила — по ближайшему партнёру на этой линии
+      const d = dir ?? c.forward();
+      const r = this.chooseReceiver(c, d, lob);
+      const dist = r ? c.dist2D(r.pos) : lob ? 25 : 15;
+      this.passTo(c, null, d, lob, A.passErr, { power: dist });
+      if (r) { this.controlled = r; this.lastSwitch = this.time; this.ball.intended = r; }
+      return;
+    }
+    this.passTo(c, this.chooseReceiver(c, dir, lob), dir, lob, A.passErr);
   }
 
   private humanShoot(p: Player, power: number, inp: InputFrame | null) {
     const gx = p.team.dir * HALF_L;
     const wz = inp ? -inp.my : 0;
-    const tz = Math.abs(wz) > 0.3 ? clamp(p.pos.z * 0.1 + wz * 3.3, -3.4, 3.4) : -Math.sign(p.pos.z || 1) * 2.4;
-    const ty = 0.3 + power * 1.7 + Math.max(0, power - 0.88) * 7;
-    this.shootAt(p, new THREE.Vector3(gx, ty, tz), power, 1);
+    const mode = this.cfg.assist ?? 'full';
+    if (mode === 'manual') {
+      // куда смотрит стик/игрок — туда и удар
+      const d = inp && Math.hypot(inp.mx, inp.my) > 0.2 ? new THREE.Vector3(inp.mx, 0, -inp.my).normalize() : p.forward();
+      const s = Math.abs(d.x) > 0.05 ? (gx - this.ball.pos.x) / d.x : -1;
+      const tz = s > 0 ? clamp(this.ball.pos.z + d.z * s, -12, 12) : this.ball.pos.z;
+      const ty = 0.3 + power * 1.7 + Math.max(0, power - 0.85) * 8;
+      this.shootAt(p, new THREE.Vector3(gx, ty, tz), power, this.assist.shotErr);
+      return;
+    }
+    const full = mode === 'full';
+    const edge = full ? GOAL_HW - 0.5 : GOAL_HW - 0.25;
+    const tz = Math.abs(wz) > 0.3 ? clamp(Math.sign(wz) * edge * Math.min(1, Math.abs(wz) * 1.2), -edge, edge) : -Math.sign(p.pos.z || 1) * (edge - 0.3);
+    const ty = full ? Math.min(2.1, 0.35 + power * 1.6) : 0.3 + power * 1.7 + Math.max(0, power - 0.88) * 7;
+    this.shootAt(p, new THREE.Vector3(gx, ty, tz), power, this.assist.shotErr);
   }
 
   // ───────────────────────── действия ─────────────────────────
@@ -336,7 +422,7 @@ export class Match {
     this.emit({ type: 'excite', v: on ? 0.6 : 0.35 });
   }
 
-  passTo(p: Player, receiver: Player | null, dirHint: THREE.Vector3 | null, lob: boolean, errMul: number, opts: { throwIn?: boolean; offside?: boolean; cross?: boolean } = {}) {
+  passTo(p: Player, receiver: Player | null, dirHint: THREE.Vector3 | null, lob: boolean, errMul: number, opts: { throwIn?: boolean; offside?: boolean; cross?: boolean; power?: number } = {}) {
     const ball = this.ball;
     const from = ball.pos.clone();
     const vel = new THREE.Vector3();
@@ -350,11 +436,13 @@ export class Match {
       let d = Math.hypot(target.x - from.x, target.z - from.z);
       let tt: number;
       if (!lob && !throwIn) {
-        const vend = Math.min(14, 8.5 + d * 0.16);
+        // мяч приходит в ноги: стоящему — точно в него, бегущему — на ход
+        const fast = p.team.isHuman && !this.autoplay && this.cfg.assist === 'full';
+        const vend = fast ? Math.min(15, 10.5 + d * 0.15) : Math.min(13, 8 + d * 0.15);
         const aEff = ball.friction + ROLL_K * (vend + 12) * 0.5;
         let v0 = clamp(Math.sqrt(vend * vend + 2 * aEff * d), 7, 28);
         tt = (2 * d) / (v0 + vend);
-        target.addScaledVector(receiver.vel, tt * 0.9);
+        if (receiver.speed() > 2) target.addScaledVector(receiver.vel, tt * 0.85);
         clampInField(target);
         d = Math.hypot(target.x - from.x, target.z - from.z);
         v0 = clamp(Math.sqrt(vend * vend + 2 * aEff * d), 7, 28);
@@ -377,10 +465,16 @@ export class Match {
     } else {
       const dir = dirHint ? dirHint.clone() : p.forward();
       ang = Math.atan2(dir.x, dir.z);
+      const dd = opts.power ?? (lob ? 25 : 15);
       if (lob || throwIn) {
-        const vh = throwIn ? 12 : 19;
-        vel.set(Math.sin(ang) * vh, throwIn ? 3 : 8, Math.cos(ang) * vh);
-      } else vel.set(Math.sin(ang) * 15, 0.4, Math.cos(ang) * 15);
+        const vh = throwIn ? 12 : clamp(8 + dd * 0.3, 10, 22);
+        const tt = dd / vh;
+        vel.set(Math.sin(ang) * vh, throwIn ? 3 : clamp(0.5 * GRAVITY * tt, 3, 14), Math.cos(ang) * vh);
+      } else {
+        const vend = Math.min(13, 8 + dd * 0.15);
+        const v0 = clamp(Math.sqrt(vend * vend + 2 * (ball.friction + ROLL_K * 10) * dd), 7, 28);
+        vel.set(Math.sin(ang) * v0, 0.4, Math.cos(ang) * v0);
+      }
     }
     // ошибка паса
     const err = gauss() * ((1 - acc) * 0.14 + 0.015) * errMul;
@@ -404,25 +498,53 @@ export class Match {
     this.emit({ type: 'kick', power: lob ? 0.55 : 0.32 });
   }
 
-  chooseReceiver(p: Player, dir: THREE.Vector3, lob: boolean): Player | null {
-    const maxD = lob ? 58 : 42;
-    for (const maxAng of [0.75, 1.35]) {
+  /**
+   * Ассистированный выбор адресата паса: партнёр в конусе ~45° по направлению,
+   * с учётом расстояния и открытости линии. Без направления — ближайший открытый впереди.
+   */
+  chooseReceiver(p: Player, dir: THREE.Vector3 | null, lob: boolean): Player | null {
+    const maxD = lob ? 60 : 45;
+    const team = p.team;
+    const cone = p.team.isHuman ? this.assist.cone : 0.8;
+    const pass = (maxAng: number, needOpen: boolean) => {
       let best: Player | null = null, bs = -1e9;
-      for (const t of p.team.players) {
-        if (t === p) continue;
+      for (const t of team.players) {
+        if (t === p || t.busy) continue;
         const vx = t.pos.x - p.pos.x, vz = t.pos.z - p.pos.z;
         const d = Math.hypot(vx, vz);
-        if (d < 2.5 || d > maxD) continue;
-        const dot = (vx * dir.x + vz * dir.z) / d;
-        const ang = Math.acos(clamp(dot, -1, 1));
-        if (ang > maxAng) continue;
-        const lane = laneOpen(p.team, p.pos, t.pos);
-        const score = -ang * 14 - Math.abs(d - (lob ? 24 : 13)) * 0.12 + Math.min(lane, 4) * 1.1 - (t.isGK ? 8 : 0);
+        if (d < 3 || d > maxD) continue;
+        const lane = lob ? 3 : laneOpen(team, p.pos, t.pos, 18);
+        if (needOpen && lane < 0.6) continue;
+        let score: number;
+        if (dir) {
+          const ang = Math.acos(clamp((vx * dir.x + vz * dir.z) / d, -1, 1));
+          if (ang > maxAng) continue;
+          score = -ang * 9 - Math.abs(d - (lob ? 26 : 14)) * 0.1 + Math.min(lane, 4) * 1.4;
+        } else {
+          const prog = (t.pos.x - p.pos.x) * team.dir;
+          score = -d * 0.18 + Math.min(lane, 4) * 1.4 + (prog > -2 ? 3 : 0) + Math.min(prog, 15) * 0.08;
+        }
+        if (t.isGK) score -= 10;
+        const opp = this.nearestOppDist(t);
+        if (needOpen && opp < 1.4) continue;
+        score += Math.min(opp, 6) * 0.6;
         if (score > bs) { bs = score; best = t; }
       }
-      if (best) return best;
+      return best;
+    };
+    const full = team.isHuman && this.cfg.assist === 'full' && !this.autoplay;
+    if (dir) {
+      // полный ассист предпочитает открытого партнёра чуть шире конуса, чем закрытого точно по направлению
+      if (full) return pass(cone, true) ?? pass(1.25, true) ?? pass(cone, false) ?? pass(Math.PI, true);
+      return pass(cone, true) ?? pass(cone, false) ?? pass(Math.max(cone, 1.3), true) ?? pass(Math.PI, true);
     }
-    return null;
+    return pass(Math.PI, true) ?? pass(Math.PI, false);
+  }
+
+  private nearestOppDist(t: Player) {
+    let bd = 99;
+    for (const o of t.team.opp.players) bd = Math.min(bd, o.dist2D(t.pos));
+    return bd;
   }
 
   isOffside(r: Player) {
@@ -434,45 +556,67 @@ export class Match {
     return rx > (xs[1] ?? 0) + 0.3;
   }
 
+  /** Обычный отбор: игрок делает выпад к мячу (без падения), исход — при касании. */
   tryTackle(p: Player) {
     const ball = this.ball;
     const c = ball.owner;
-    if (!c || c.team === p.team || ball.heldByGK || this.state !== 'play' || p.busy) return;
-    p.tackleCD = p === this.controlled ? 0.45 : p.team.ai.tackleCD;
+    if (!c || c.team === p.team || ball.heldByGK || this.state !== 'play' || p.busy || p.tackleT > 0 || p.tackleCD > 0) return;
+    p.tackleCD = p === this.controlled ? 0.55 : p.team.ai.tackleCD;
     p.kickAnim = 0;
-    const d = Math.min(p.dist2D(c.pos), p.dist2D(ball.pos));
-    if (d > 1.8) return;
-    const rx = (p.pos.x - c.pos.x) / (d || 1), rz = (p.pos.z - c.pos.z) / (d || 1);
+    if (p.dist2D(ball.pos) > 3.2) return; // слишком далеко — только замах
+    p.tackleT = 0.35;
+    p.tackleDone = false;
+  }
+
+  private resolveTackle(p: Player) {
+    const ball = this.ball;
+    const c = ball.owner;
+    if (!c || c.team === p.team || ball.heldByGK) return;
+    const d = Math.max(0.01, p.dist2D(c.pos));
+    const rx = (p.pos.x - c.pos.x) / d, rz = (p.pos.z - c.pos.z) / d;
     const f = c.forward(_w);
     const behind = f.x * rx + f.z * rz < -0.5;
-    let prob = 0.4 + ((p.data.defending - c.data.dribbling) / 100) * 0.9 - (behind ? 0.2 : 0);
-    if (!p.team.isHuman) prob += p.team.ai.tackleBonus;
-    else prob -= (this.difficulty - 1) * 0.06;
-    if (p.data.physical > c.data.physical) prob += 0.05;
-    prob = clamp(prob, 0.08, 0.85);
+    let prob = 0.56 + ((p.data.defending - c.data.dribbling) / 100) * 0.7 - (behind ? 0.22 : 0);
+    if (p.team.isHuman && p === this.controlled) prob += this.assist.tackleBonus - (this.difficulty - 1) * 0.05;
+    else if (!p.team.isHuman) prob += p.team.ai.tackleBonus;
+    if (p.data.physical > c.data.physical) prob += 0.04;
+    prob = clamp(prob, 0.15, 0.9);
+    p.tackleT = 0;
     if (Math.random() < prob) {
-      c.stunT = 0.25;
-      if (Math.random() < 0.6) this.setOwner(p);
+      c.stunT = 0.22;
+      if (Math.random() < 0.65) this.setOwner(p);
       else {
         const fw = p.forward();
-        ball.kick(new THREE.Vector3(fw.x * 5 + rand(-2, 2), 0.3, fw.z * 5 + rand(-2, 2)), p);
-        p.kickCD = 0.15;
+        ball.kick(new THREE.Vector3(fw.x * 4 + rand(-1.5, 1.5), 0.2, fw.z * 4 + rand(-1.5, 1.5)), p);
+        p.kickCD = 0.12;
       }
       this.emit({ type: 'kick', power: 0.2 });
     } else {
-      p.stunT = 0.4;
-      if (Math.random() < (behind ? 0.3 : 0.05)) this.foul(p, c, false);
+      p.stunT = 0.3; // промах — короткая заминка, без падения
+      if (Math.random() < (behind ? 0.2 : 0.03)) this.foul(p, c, false);
     }
   }
 
+  /** Подкат: сам доворачивает в сторону мяча, скольжение ~3 м, затем вставание. */
   startSlide(p: Player) {
     if (p.busy || this.ball.owner === p || this.state !== 'play') return;
-    p.slideT = 0.6;
-    p.slideWon = false;
+    const ball = this.ball;
     const f = p.forward();
-    const sp = Math.max(p.speed(), 4) + 3.2;
+    const aim = ball.pos.clone().addScaledVector(ball.vel, 0.22).sub(p.pos).setY(0);
+    const d = aim.length();
+    const maxTurn = p.team.isHuman && p === this.controlled ? (this.cfg.assist === 'manual' ? 0.4 : 1.9) : 1.4;
+    if (d > 0.1 && d < 5.5) {
+      aim.multiplyScalar(1 / d);
+      const ang = Math.acos(clamp(aim.x * f.x + aim.z * f.z, -1, 1));
+      if (ang < maxTurn) f.copy(aim);
+    }
+    p.facing = Math.atan2(f.x, f.z);
+    p.slideT = 0.55;
+    p.slideWon = false;
+    const sp = Math.max(p.speed() * 0.4, 0) + 7.5;
     p.vel.set(f.x * sp, 0, f.z * sp);
     p.kickAnim = -1;
+    p.tackleT = 0;
   }
 
   private slideChecks() {
@@ -480,22 +624,24 @@ export class Match {
     for (const p of this.players) {
       if (p.slideT <= 0 || p.slideWon) continue;
       const f = p.forward(_w);
-      const fx = p.pos.x + f.x * 0.7, fz = p.pos.z + f.z * 0.7;
+      const fx = p.pos.x + f.x * 0.75, fz = p.pos.z + f.z * 0.75;
       const c = ball.owner;
       if (ball.heldByGK) continue;
-      if (ball.pos.y < 0.7 && Math.hypot(ball.pos.x - fx, ball.pos.z - fz) < 0.85 && (!c || c.team !== p.team)) {
-        if (c) { c.stunT = 0.5; c.fallen = 2; }
+      if (ball.pos.y < 0.7 && Math.hypot(ball.pos.x - fx, ball.pos.z - fz) < 0.95 && (!c || c.team !== p.team)) {
+        // чисто сыграл в мяч
+        if (c) { c.stunT = 0.45; c.fallen = 2; }
         ball.owner = null;
-        ball.kick(new THREE.Vector3(p.vel.x * 0.9 + rand(-2, 2), 0.5, p.vel.z * 0.9 + rand(-2, 2)), p);
+        ball.kick(new THREE.Vector3(p.vel.x * 0.85 + rand(-2, 2), 0.4, p.vel.z * 0.85 + rand(-2, 2)), p);
+        ball.intended = null;
         p.slideWon = true;
         p.kickCD = 0.2;
         this.emit({ type: 'kick', power: 0.35 });
-      } else if (c && c.team !== p.team && p.dist2D(c.pos) < 0.95) {
+      } else if (c && c.team !== p.team && p.dist2D(c.pos) < 0.9) {
+        // попал по ногам, не задев мяч — фол
         p.slideWon = true;
         c.stunT = 1.0;
         c.fallen = 2;
-        const foulProb = clamp(0.8 - p.data.defending / 200, 0.25, 0.7);
-        if (Math.random() < foulProb) this.foul(p, c, true);
+        if (Math.random() < 0.9) this.foul(p, c, true);
         else {
           ball.owner = null;
           ball.kick(new THREE.Vector3(rand(-3, 3), 0.3, rand(-3, 3)), p);
@@ -657,9 +803,9 @@ export class Match {
       return;
     }
     const sp = o.speed();
-    const touch = 0.42 + sp * 0.055 * (1.25 - o.data.dribbling / 100);
+    const touch = 0.36 + sp * 0.034 * (1.25 - o.data.dribbling / 100);
     const tx = o.pos.x + f.x * touch, tz = o.pos.z + f.z * touch;
-    const k = 1 - Math.exp(-18 * dt);
+    const k = 1 - Math.exp(-26 * dt);
     const nx = ball.pos.x + (tx - ball.pos.x) * k;
     const nz = ball.pos.z + (tz - ball.pos.z) * k;
     ball.vel.set((nx - ball.pos.x) / Math.max(dt, 1e-4), 0, (nz - ball.pos.z) / Math.max(dt, 1e-4));
@@ -673,6 +819,19 @@ export class Match {
         // владелец упал — мяч свободен
         ball.owner = null;
       } else { this.holdBall(dt); return; }
+    }
+    // «магнит» приёма: адресат паса принимает мяч мягко, мяч не проскакивает мимо
+    const r = ball.intended;
+    if (r && !r.busy && r.kickCD <= 0 && r.team === ball.lastTouch?.team && ball.pos.y < 1.7) {
+      const R = this.magnetFor(r);
+      const dSeg = segDist2D(ball.prev, ball.pos, r.pos);
+      if (dSeg < R) {
+        if (ball.offsidePlayer === r) { this.offside(r); return; }
+        ball.pos.set(r.pos.x + (ball.pos.x - r.pos.x) * 0.5, BALL_R, r.pos.z + (ball.pos.z - r.pos.z) * 0.5);
+        ball.vel.multiplyScalar(0.15);
+        this.setOwner(r);
+        return;
+      }
     }
     let best: Player | null = null, bd = 9, header = false;
     for (const p of this.players) {
@@ -697,7 +856,7 @@ export class Match {
     if (!best) return;
     if (header) { this.doHeader(best); return; }
     const rel = Math.hypot(ball.vel.x - best.vel.x, ball.vel.z - best.vel.z);
-    if (rel > 17 && Math.random() > 0.45 + best.data.dribbling / 220) {
+    if (best !== ball.intended && rel > 17 && Math.random() > 0.45 + best.data.dribbling / 220) {
       ball.vel.multiplyScalar(-0.3);
       ball.vel.x += rand(-2, 2); ball.vel.z += rand(-2, 2);
       ball.lastTouch = best;
@@ -707,6 +866,11 @@ export class Match {
       return;
     }
     this.setOwner(best);
+  }
+
+  private magnetFor(p: Player) {
+    if (p.team.isHuman && !this.autoplay) return this.assist.magnet;
+    return p.team.isHuman ? 1.4 : [1.0, 1.25, 1.45][this.difficulty];
   }
 
   private checkOut() {
@@ -1128,6 +1292,15 @@ export class Match {
     for (const t of this.teams) t.dispose();
     this.listeners.length = 0;
   }
+}
+
+/** Расстояние в плоскости XZ от точки p до отрезка a–b. */
+function segDist2D(a: THREE.Vector3, b: THREE.Vector3, p: THREE.Vector3) {
+  const abx = b.x - a.x, abz = b.z - a.z;
+  const l2 = abx * abx + abz * abz;
+  let t = l2 > 1e-8 ? ((p.x - a.x) * abx + (p.z - a.z) * abz) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(a.x + abx * t - p.x, a.z + abz * t - p.z);
 }
 
 function clampInField(v: THREE.Vector3) {

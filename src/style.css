@@ -248,6 +248,9 @@ button, .card, .opt, .tile, .sub-row { touch-action: manipulation; }
 .joy-knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: rgba(255,255,255,.55); border: 2px solid rgba(255,255,255,.85); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
 .tbtn { position: absolute; pointer-events: auto; touch-action: none; display: flex; align-items: center; justify-content: center; border-radius: 50%; color: #fff; font-family: var(--head); font-weight: 800; font-size: 15px; letter-spacing: .03em; text-transform: uppercase; background: rgba(15, 25, 50, .38); border: 2px solid rgba(255,255,255,.5); box-shadow: 0 4px 16px rgba(0,0,0,.3); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); text-shadow: 0 1px 3px rgba(0,0,0,.6); padding: 0; transition: transform .06s, background .06s; }
 .tbtn.on { transform: scale(.9); background: rgba(255,255,255,.4); }
+.tbtn.dim { opacity: .3; }
+.touch.defending .t-shoot { background: rgba(240, 140, 20, .45); border-color: rgba(255,210,150,.8); font-size: 17px; }
+.touch.defending .t-pass { font-size: 12px; background: rgba(60, 90, 220, .42); }
 .tbtns { position: absolute; right: env(safe-area-inset-right); bottom: env(safe-area-inset-bottom); width: 0; height: 0; }
 .t-shoot  { right: 22px;  bottom: 26px;  width: 96px; height: 96px; font-size: 19px; background: rgba(220, 40, 60, .42); border-color: rgba(255,170,180,.75); }
 .t-pass   { right: 132px; bottom: 18px;  width: 76px; height: 76px; background: rgba(0, 190, 130, .4); border-color: rgba(150,255,210,.7); }

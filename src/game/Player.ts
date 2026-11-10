@@ -29,6 +29,10 @@ export class Player {
   celebrate = false;
   phase = Math.random() * 6;
   holdT = 0;
+  tackleT = 0; // выпад при отборе
+  tackleDone = false;
+  riseT = 0; // вставание после подката
+  accelMul = 1; // управляемый игроком — отзывчивее
 
   // ИИ
   aiTimer = Math.random() * 0.5;
@@ -68,6 +72,7 @@ export class Player {
   step(dt: number, hasBall: boolean) {
     this.kickCD -= dt;
     this.tackleCD -= dt;
+    if (this.tackleT > 0) this.tackleT -= dt;
     if (this.jumpT > 0) this.jumpT -= dt;
 
     if (this.diveT > 0) {
@@ -87,15 +92,16 @@ export class Player {
     if (this.slideT > 0) {
       this.slideT -= dt;
       this.vel.multiplyScalar(Math.max(0, 1 - 1.9 * dt));
-      if (this.slideT <= 0) { this.stunT = 0.35; this.slideWon = false; }
+      if (this.slideT <= 0) { this.riseT = 0.5; this.stunT = 0.5; this.fallen = 3; this.slideWon = false; }
     } else if (this.stunT > 0) {
       this.stunT -= dt;
       this.vel.multiplyScalar(Math.max(0, 1 - 7 * dt));
-      if (this.stunT <= 0) this.fallen = 0;
+      if (this.riseT > 0) { this.riseT -= dt; this.fallen = 3 + Math.min(0.999, 1 - this.riseT / 0.5); }
+      if (this.stunT <= 0) { this.fallen = 0; this.riseT = 0; }
     } else {
       const dvx = this.desired.x - this.vel.x, dvz = this.desired.z - this.vel.z;
       const dl = Math.hypot(dvx, dvz);
-      const acc = (14 + this.data.physical * 0.05 + this.data.pace * 0.04) * (hasBall ? 0.85 : 1);
+      const acc = (14 + this.data.physical * 0.05 + this.data.pace * 0.04) * (hasBall ? 0.85 : 1) * this.accelMul * (this.tackleT > 0 ? 1.8 : 1);
       const maxDv = acc * dt;
       if (dl > maxDv) { this.vel.x += (dvx / dl) * maxDv; this.vel.z += (dvz / dl) * maxDv; }
       else { this.vel.x = this.desired.x; this.vel.z = this.desired.z; }
@@ -112,7 +118,7 @@ export class Player {
     const sp = this.speed();
     if (this.slideT <= 0 && this.stunT <= 0) {
       if (sp > 0.6) {
-        const turn = hasBall ? 5 + this.data.dribbling / 18 : 11;
+        const turn = (hasBall ? 5 + this.data.dribbling / 18 : 11) * (this.accelMul > 1 ? 1.4 : 1);
         this.facing = angleLerp(this.facing, Math.atan2(this.vel.x, this.vel.z), Math.min(1, turn * dt));
       } else if (this.lookAt) {
         const a = Math.atan2(this.lookAt.x - this.pos.x, this.lookAt.z - this.pos.z);

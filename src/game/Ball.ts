@@ -33,6 +33,8 @@ function makeBallTexture() {
 
 export class Ball {
   pos = new THREE.Vector3(0, BALL_R, 0);
+  /** Позиция на прошлом шаге — для непрерывной проверки приёма (мяч не проскакивает). */
+  prev = new THREE.Vector3(0, BALL_R, 0);
   vel = new THREE.Vector3();
   spin = 0;
   owner: Player | null = null;
@@ -79,6 +81,7 @@ export class Ball {
   step(dt: number): 'post' | 'bounce' | 'net' | null {
     let ev: 'post' | 'bounce' | 'net' | null = null;
     const p = this.pos, v = this.vel;
+    this.prev.copy(p);
     const prevX = p.x;
     integrate(p, v, dt, this.friction, this.bounce, this);
     if (this.lastBounce) { ev = 'bounce'; this.lastBounce = false; }

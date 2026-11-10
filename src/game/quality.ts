@@ -1,3 +1,5 @@
+import type { GraphicsLevel } from './types';
+
 const hasWindow = typeof window !== 'undefined';
 
 /** Сенсорный экран (телефон / планшет). */
@@ -23,3 +25,20 @@ export const LOW_QUALITY = !params.has('high') && (params.has('low') || IS_MOBIL
 
 /** Принудительно показать сенсорное управление на ПК: ?touch */
 export const SHOW_TOUCH = IS_TOUCH || params.has('touch');
+
+
+/** Уровень графики по умолчанию: сохранённый выбор, иначе телефон — низкая, ПК — высокая. */
+export function defaultGraphics(): GraphicsLevel {
+  if (params.has('low')) return 'low';
+  if (params.has('high')) return 'high';
+  if (params.has('medium')) return 'medium';
+  try {
+    const v = localStorage.getItem('uf26-gfx');
+    if (v === 'low' || v === 'medium' || v === 'high') return v;
+  } catch { /* приватный режим */ }
+  return IS_MOBILE ? 'low' : 'high';
+}
+
+export function saveGraphics(g: GraphicsLevel) {
+  try { localStorage.setItem('uf26-gfx', g); } catch { /* приватный режим */ }
+}

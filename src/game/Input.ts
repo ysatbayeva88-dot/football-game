@@ -1,5 +1,10 @@
 import type { TouchControls } from '../ui/TouchControls';
 
+/**
+ * Кадр ввода. Раскладка зависит от фазы (как в FC):
+ *  атака  — пас, навес, удар (держать = сила);
+ *  защита — отбор (E / B / «Отбор»), прессинг с вызовом партнёра (Q / A / «Прессинг», держать), подкат.
+ */
 export interface InputFrame {
   mx: number; // вправо по экрану
   my: number; // вверх по экрану
@@ -8,11 +13,17 @@ export interface InputFrame {
   shootReleased: boolean;
   pass: boolean;
   lob: boolean;
+  slide: boolean;
   tackle: boolean;
+  press: boolean;
   switchP: boolean;
   pause: boolean;
   skip: boolean;
   any: boolean;
+}
+
+export function emptyInput(): InputFrame {
+  return { mx: 0, my: 0, sprint: false, shootHeld: false, shootReleased: false, pass: false, lob: false, slide: false, tackle: false, press: false, switchP: false, pause: false, skip: false, any: false };
 }
 
 const PREVENT = new Set(['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
@@ -24,6 +35,8 @@ export class Input {
   private padPrev: boolean[] = [];
   private padShootHeld = false;
   enabled = true;
+  /** Команда игрока сейчас обороняется (выставляет игра каждый кадр). */
+  defending = false;
   touch: TouchControls | null = null;
   usingPad = false;
 
@@ -56,25 +69,30 @@ export class Input {
   private p(c: string) { return this.pressed.has(c); }
 
   poll(): InputFrame {
+    const def = this.defending;
+    const f = emptyInput();
     let mx = (this.k('KeyD') || this.k('ArrowRight') ? 1 : 0) - (this.k('KeyA') || this.k('ArrowLeft') ? 1 : 0);
     let my = (this.k('KeyW') || this.k('ArrowUp') ? 1 : 0) - (this.k('KeyS') || this.k('ArrowDown') ? 1 : 0);
     const l = Math.hypot(mx, my);
     if (l > 1) { mx /= l; my /= l; }
-    const f: InputFrame = {
-      mx, my,
-      sprint: this.k('ShiftLeft') || this.k('ShiftRight'),
-      shootHeld: this.k('Space'),
-      shootReleased: this.released.has('Space'),
-      pass: this.p('KeyE'),
-      lob: this.p('KeyQ'),
-      tackle: this.p('KeyF'),
-      switchP: this.p('Tab'),
-      pause: this.p('Escape') || this.p('KeyP'),
-      skip: this.p('Enter') || this.p('Space'),
-      any: this.pressed.size > 0,
-    };
+    f.mx = mx; f.my = my;
+    f.sprint = this.k('ShiftLeft') || this.k('ShiftRight');
+    if (def) {
+      f.tackle = this.p('KeyE') || this.p('Space');
+      f.press = this.k('KeyQ');
+    } else {
+      f.pass = this.p('KeyE');
+      f.lob = this.p('KeyQ');
+      f.shootHeld = this.k('Space');
+      f.shootReleased = this.released.has('Space');
+    }
+    f.slide = this.p('KeyF');
+    f.switchP = this.p('Tab');
+    f.pause = this.p('Escape') || this.p('KeyP');
+    f.skip = this.p('Enter') || this.p('Space');
+    f.any = this.pressed.size > 0;
 
-    // геймпад (раскладка Xbox: A пас, B удар, X навес, Y подкат, LB смена, RT спринт)
+    // геймпад (Xbox): A пас/прессинг, B удар/отбор, X навес/подкат, Y подкат, LB смена, RT спринт
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const pad of pads) {
       if (!pad) continue;
@@ -82,19 +100,25 @@ export class Input {
       const edge = (i: number) => b(i) && !this.padPrev[i];
       const ax = pad.axes[0] || 0, ay = pad.axes[1] || 0;
       const mag = Math.hypot(ax, ay);
-      if (mag > 0.22) {
-        const m = Math.min(1, (mag - 0.22) / 0.7);
+      if (mag > 0.2) {
+        const m = Math.min(1, (mag - 0.2) / 0.7);
         f.mx = (ax / mag) * m; f.my = (-ay / mag) * m;
         this.usingPad = true;
       }
       if (b(12)) f.my = 1; if (b(13)) f.my = -1; if (b(14)) f.mx = -1; if (b(15)) f.mx = 1;
       if (b(7) || b(5)) f.sprint = true;
-      if (edge(0)) f.pass = true;
-      if (b(1)) f.shootHeld = true;
-      if (!b(1) && this.padShootHeld) f.shootReleased = true;
-      this.padShootHeld = b(1);
-      if (edge(2)) f.lob = true;
-      if (edge(3)) f.tackle = true;
+      if (def) {
+        if (b(0)) f.press = true;
+        if (edge(1)) f.tackle = true;
+        if (edge(2)) f.slide = true;
+      } else {
+        if (edge(0)) f.pass = true;
+        if (b(1)) f.shootHeld = true;
+        if (!b(1) && this.padShootHeld) f.shootReleased = true;
+        if (edge(2)) f.lob = true;
+      }
+      this.padShootHeld = b(1) && !def;
+      if (edge(3)) f.slide = true;
       if (edge(4)) f.switchP = true;
       if (edge(9)) f.pause = true;
       if (edge(0) || edge(9) || edge(1)) f.skip = true;
@@ -105,14 +129,20 @@ export class Input {
 
     // сенсорное управление
     if (this.touch) {
+      this.touch.setDefending(def);
       const t = this.touch.poll();
       if (Math.hypot(t.mx, t.my) > 0.01) { f.mx = t.mx; f.my = t.my; }
       f.sprint ||= t.sprint;
-      f.shootHeld ||= t.shootHeld;
-      f.shootReleased ||= t.shootReleased;
-      f.pass ||= t.pass;
-      f.lob ||= t.lob;
-      f.tackle ||= t.tackle;
+      if (def) {
+        f.tackle ||= t.shootPressed;
+        f.press ||= t.passHeld;
+      } else {
+        f.shootHeld ||= t.shootHeld;
+        f.shootReleased ||= t.shootReleased;
+        f.pass ||= t.pass;
+        f.lob ||= t.lob;
+      }
+      f.slide ||= t.slide;
       f.switchP ||= t.switchP;
       f.pause ||= t.pause;
       f.skip ||= t.pass || t.shootReleased || t.lob;

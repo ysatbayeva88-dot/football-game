@@ -41,6 +41,13 @@ export const DIFFICULTIES: Difficulty[] = [
 /** Параметры ИИ-партнёров игрока (не зависят от сложности бота). */
 export const ALLY_AI: Difficulty = { ...DIFFICULTIES[1], pressers: 1, tackleCD: 1.0 };
 
+/** Уровни ассиста управления (только для команды игрока). */
+export const ASSISTS = {
+  full: { name: 'Полный', passErr: 0.12, shotErr: 0.7, magnet: 1.6, autoReceive: true, tackleBonus: 0.12, cone: 0.8 },
+  semi: { name: 'Средний', passErr: 0.55, shotErr: 1.0, magnet: 1.2, autoReceive: true, tackleBonus: 0.04, cone: 0.8 },
+  manual: { name: 'Ручной', passErr: 1.0, shotErr: 1.25, magnet: 0.9, autoReceive: false, tackleBonus: -0.04, cone: 0.3 },
+} as const;
+
 export type Role = 'GK' | 'DEF' | 'MID' | 'FWD';
 export interface Slot { x: number; z: number; role: Role; label: string }
 

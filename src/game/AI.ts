@@ -75,7 +75,7 @@ export function computeContext(m: Match) {
         .sort((a, b) => a.dist2D(owner.pos) - b.dist2D(owner.pos));
       for (let i = 0; i < n && i < sorted.length; i++) {
         // у игрока ИИ-напарник прессингует только если управляемый игрок далеко
-        if (team.isHuman && m.controlled && m.controlled.dist2D(owner.pos) < 9) break;
+        if (team.isHuman && m.controlled && m.controlled.dist2D(owner.pos) < 9 && !m.humanPress) break;
         c.pressers.push(sorted[i]);
       }
     }

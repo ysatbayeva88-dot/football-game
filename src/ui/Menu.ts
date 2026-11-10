@@ -1,9 +1,9 @@
-import { DIFFICULTIES, FORMATIONS, STADIUMS } from '../game/constants';
+import { ASSISTS, DIFFICULTIES, FORMATIONS, STADIUMS } from '../game/constants';
 import { teamOvr } from '../game/Team';
-import type { FormationName, Kit, MatchConfig, MatchResult, StadiumId, TeamData } from '../game/types';
+import type { AssistLevel, FormationName, GraphicsLevel, Kit, MatchConfig, MatchResult, StadiumId, TeamData } from '../game/types';
 import { colorDistance, emblemHTML, esc } from './emblem';
 import { CONTROLS_HTML } from './HUD';
-import { SHOW_TOUCH } from '../game/quality';
+import { SHOW_TOUCH, defaultGraphics, saveGraphics } from '../game/quality';
 
 export interface MenuCallbacks {
   onStart(cfg: MatchConfig): void;
@@ -36,6 +36,8 @@ export class Menu {
   private difficulty: 0 | 1 | 2 = 1;
   private halfMinutes: 2 | 4 | 6 = 4;
   private formation: FormationName = '4-3-3';
+  private assist: AssistLevel = (localStorageGet('uf26-assist') as AssistLevel) || 'full';
+  private graphics: GraphicsLevel = defaultGraphics();
   private loadingBar: HTMLElement | null = null;
   private loadingLabel: HTMLElement | null = null;
 
@@ -179,6 +181,12 @@ export class Menu {
           <h3>Ваша расстановка</h3>
           <div class="opts">${(Object.keys(FORMATIONS) as FormationName[]).map(f => opt('form', f, f, this.formation === f)).join('')}</div>
         </section>
+        <section class="panel"><h3>Ассист управления</h3>
+          <div class="opts">${(Object.keys(ASSISTS) as AssistLevel[]).map(a => opt('assist', a, ASSISTS[a].name, this.assist === a, { full: 'Пасы и удары с наведением', semi: 'Частичная помощь', manual: 'Всё вручную' }[a])).join('')}</div>
+        </section>
+        <section class="panel"><h3>Графика</h3>
+          <div class="opts">${(['low', 'medium', 'high'] as GraphicsLevel[]).map(g => opt('gfx', g, { low: 'Низкая', medium: 'Средняя', high: 'Высокая' }[g], this.graphics === g, { low: 'Для слабых телефонов', medium: 'Тени, без эффектов', high: 'Тени и пост-обработка' }[g])).join('')}</div>
+        </section>
       </div>
       <div class="row-btns bottom">
         <button class="btn" data-a="back">Назад</button>
@@ -192,6 +200,8 @@ export class Menu {
       if (g === 'diff') this.difficulty = +v as 0 | 1 | 2;
       if (g === 'half') this.halfMinutes = +v as 2 | 4 | 6;
       if (g === 'form') this.formation = v as FormationName;
+      if (g === 'assist') { this.assist = v as AssistLevel; localStorageSet('uf26-assist', v); }
+      if (g === 'gfx') { this.graphics = v as GraphicsLevel; saveGraphics(this.graphics); }
       this.showSettings();
     });
     this.bind('[data-a="back"]', () => this.showTeams());
@@ -204,6 +214,7 @@ export class Menu {
       homeKit: this.homeKit, awayKit: this.awayKit,
       stadium: this.stadium, difficulty: this.difficulty,
       halfMinutes: this.halfMinutes, formation: this.formation,
+      assist: this.assist, graphics: this.graphics,
     };
   }
 
@@ -299,4 +310,11 @@ export class Menu {
     this.bind('[data-a="menu"]', () => this.showMain());
     this.bind('[data-a="rematch"]', () => this.cb.onStart(r.cfg));
   }
+}
+
+function localStorageGet(k: string) {
+  try { return localStorage.getItem(k); } catch { return null; }
+}
+function localStorageSet(k: string, v: string) {
+  try { localStorage.setItem(k, v); } catch { /* приватный режим */ }
 }

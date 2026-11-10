@@ -10,9 +10,11 @@ export interface TouchState {
   sprint: boolean;
   shootHeld: boolean;
   shootReleased: boolean;
+  shootPressed: boolean;
   pass: boolean;
+  passHeld: boolean;
   lob: boolean;
-  tackle: boolean;
+  slide: boolean;
   switchP: boolean;
   pause: boolean;
   any: boolean;
@@ -135,9 +137,11 @@ export class TouchControls {
       sprint: this.held.has('sprint'),
       shootHeld: this.held.has('shoot'),
       shootReleased: this.released.has('shoot'),
+      shootPressed: this.pressed.has('shoot'),
       pass: this.pressed.has('pass'),
+      passHeld: this.held.has('pass'),
       lob: this.pressed.has('lob'),
-      tackle: this.pressed.has('tackle'),
+      slide: this.pressed.has('tackle'),
       switchP: this.pressed.has('switch'),
       pause: this.pressed.has('pause'),
       any: this.pressed.size > 0 || this.anyTouch,
@@ -146,6 +150,18 @@ export class TouchControls {
     this.released.clear();
     this.anyTouch = false;
     return s;
+  }
+
+  private defending = false;
+  /** В защите кнопки меняют смысл: «Удар» → «Отбор», «Пас» → «Прессинг». */
+  setDefending(d: boolean) {
+    if (d === this.defending) return;
+    this.defending = d;
+    const q = (c: string) => this.el.querySelector(c) as HTMLElement;
+    q('.t-shoot').textContent = d ? 'Отбор' : 'Удар';
+    q('.t-pass').textContent = d ? 'Прессинг' : 'Пас';
+    q('.t-lob').classList.toggle('dim', d);
+    this.el.classList.toggle('defending', d);
   }
 
   setVisible(v: boolean) { this.el.style.display = v ? '' : 'none'; }
