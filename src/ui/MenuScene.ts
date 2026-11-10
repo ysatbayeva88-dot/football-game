@@ -93,6 +93,10 @@ export class MenuScene {
 
   setMode(m: 'orbit' | 'showcase') { this.mode = m; }
 
+  /** Мгновенно перенести камеру в целевую точку (для отладки/тестов). */
+  snapCamera() { this.snap = true; }
+  private snap = false;
+
   start() {
     window.addEventListener('resize', this.onResize);
     this.resize();
@@ -176,7 +180,8 @@ export class MenuScene {
       want.set(-6 + 0.4, 1.45, 24 + 4.2);
       look.set(-6 - off, 1.1, 24);
     }
-    const kk = 1 - Math.exp(-dt * (this.mode === 'orbit' ? 0.8 : 3.5));
+    const kk = this.snap ? 1 : 1 - Math.exp(-dt * (this.mode === 'orbit' ? 0.8 : 3.5));
+    this.snap = false;
     this.camPos.lerp(want, kk);
     this.camLook.lerp(look, kk);
     this.cam.position.copy(this.camPos);

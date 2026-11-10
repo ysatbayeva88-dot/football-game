@@ -54,6 +54,7 @@ function openMenuScene(rebuild = false) {
   try {
     menuScene = new MenuScene(renderer, menu.user, menu.graphicsLevel);
     menuScene.start();
+    (window as unknown as { __menuScene: MenuScene }).__menuScene = menuScene;
     canvasWrap.style.visibility = 'visible';
   } catch (e) {
     console.error('Не удалось построить 3D-фон меню', e);
