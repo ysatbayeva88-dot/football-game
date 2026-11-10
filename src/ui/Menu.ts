@@ -88,10 +88,14 @@ export class Menu {
   get graphicsLevel() { return this.graphics; }
 
   show() { this.el.style.display = 'flex'; }
-  hide() { this.el.style.display = 'none'; this.el.innerHTML = ''; this.setKeys(null); }
+  hide() { this.el.style.display = 'none'; this.el.innerHTML = ''; this.setKeys(null); this.lastScreen = ''; }
 
+  private lastScreen = '';
   private screen(inner: string, cls = '') {
-    this.el.innerHTML = `<div class="menu-shade ${cls}"></div><div class="screen ${cls}">${inner}</div>`;
+    // анимация появления — только при переходе на другой экран, не при перерисовке того же
+    const still = cls === this.lastScreen ? ' still' : '';
+    this.lastScreen = cls;
+    this.el.innerHTML = `<div class="menu-shade ${cls}"></div><div class="screen ${cls}${still}">${inner}</div>`;
     this.show();
   }
 
@@ -201,7 +205,7 @@ export class Menu {
       <div class="tc-label">${side === 'u' ? 'ВЫ' : 'КОМПЬЮТЕР'}</div>
       <div class="tc-row">
         <button class="arrow-btn" data-nav="${side}" data-d="-1" aria-label="Предыдущий клуб">‹</button>
-        <div class="tc-crest">${crestHTML(t, 110)}</div>
+        <div class="tc-crest" data-team="${t.id}">${crestHTML(t, 110)}</div>
         <button class="arrow-btn" data-nav="${side}" data-d="1" aria-label="Следующий клуб">›</button>
       </div>
       <div class="tc-name">${esc(t.name)}</div>

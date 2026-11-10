@@ -475,11 +475,15 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   .tcards { flex: 0 1 600px; gap: 8px; }
   .tcards .vs { font-size: 26px; }
   .tcard { padding: 8px 8px; gap: 3px; }
-  .tc-crest .emblem { transform: scale(.55); margin: -26px -24px; }
+  .tc-crest .emblem { transform: scale(.42); margin: -36px -32px; }
+  .tc-label { font-size: 10px; letter-spacing: .2em; }
+  .tc-ovr { display: flex; align-items: baseline; gap: 6px; }
+  .tc-ovr span { display: inline; font-size: 10px; letter-spacing: .15em; }
+  .tc-bars { gap: 1px; }
   .arrow-btn { width: 40px; height: 40px; font-size: 26px; }
-  .tc-name { font-size: 18px; }
-  .stars { font-size: 15px; }
-  .tc-ovr b { font-size: 30px; }
+  .tc-name { font-size: 17px; }
+  .stars { font-size: 13px; }
+  .tc-ovr b { font-size: 24px; }
   .tc-best, .tc-dots { display: none; }
   .tc-bars .bar { font-size: 10px; }
   .showcase-label { font-size: 20px; bottom: 60px; }
@@ -487,7 +491,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   .slider { grid-template-columns: 120px 1fr 36px; font-size: 13px; margin: 4px 0; }
   .lineup-v2 { gap: 8px; }
   .board { max-height: calc(100vh - 130px); }
-  .pcard { width: 58px; padding: 2px; }
+  .pcard { width: 50px; padding: 1px 2px; border-radius: 6px; }
+  .pc-pos { display: none; }
+  .teams-v2 .tcards { padding-bottom: 60px; }
   .pc-ovr { font-size: 13px; }
   .pc-num { display: none; }
   .pc-name { font-size: 10px; }
@@ -495,4 +501,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
   .bench-col .panel { padding: 8px 10px; }
   .pcard.bench { padding: 3px 6px; gap: 5px; }
   .bench-col .hint-small { display: none; }
+}
+
+.screen.still { animation: none; }
+.screen.still .tc-crest { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .screen, .tc-crest, .menu-bg .glow { animation: none !important; }
+  .tile, .tcard, .pcard { transition: none !important; }
 }

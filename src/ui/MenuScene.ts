@@ -170,11 +170,13 @@ export class MenuScene {
       look.set(0, 2, 0);
     } else {
       // игрок в правой части экрана: камера смотрит левее него
-      const wide = this.cam.aspect > 1.2;
-      want.set(-6 + (wide ? 2.6 : 1.2), 1.55, 24 + 4.4);
-      look.set(-6 - (wide ? 1.55 : 0.6), 1.05, 24);
+      // смещение подобрано так, чтобы игрок оказался в правой ~15–20% экрана при любом соотношении сторон
+      const asp = this.cam.aspect;
+      const off = asp > 1.2 ? 1.9 * Math.max(1, asp / 1.78) : 0.4;
+      want.set(-6 + 0.4, 1.45, 24 + 4.2);
+      look.set(-6 - off, 1.1, 24);
     }
-    const kk = 1 - Math.exp(-dt * (this.mode === 'orbit' ? 0.8 : 2.5));
+    const kk = 1 - Math.exp(-dt * (this.mode === 'orbit' ? 0.8 : 3.5));
     this.camPos.lerp(want, kk);
     this.camLook.lerp(look, kk);
     this.cam.position.copy(this.camPos);

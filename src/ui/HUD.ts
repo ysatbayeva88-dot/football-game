@@ -20,8 +20,8 @@ export const CONTROLS_HTML = `
   <tr><td>Навес / длинный пас</td><td>Q</td><td>X</td></tr>
   <tr><td>Удар (держать — сильнее)</td><td>Пробел</td><td>B</td></tr>
   <tr><th colspan="3">Защита</th></tr>
-  <tr><td>Отбор (выпад к мячу)</td><td>E или Пробел</td><td>B</td></tr>
-  <tr><td>Прессинг + вызов партнёра (держать)</td><td>Q</td><td>A</td></tr>
+  <tr><td>«Отбор»: нажать — выпад к мячу, держать — сопровождение</td><td>Пробел</td><td>B</td></tr>
+  <tr><td>Вызвать партнёра на прессинг (держать)</td><td>E</td><td>A</td></tr>
   <tr><td>Подкат (наводится на мяч)</td><td>F</td><td>X / Y</td></tr>
   <tr><th colspan="3">Общее</th></tr>
   <tr><td>Смена игрока</td><td>Tab</td><td>LB</td></tr>
@@ -32,7 +32,7 @@ export const CONTROLS_HTML = `
   <tr><th>На телефоне</th><th>Сенсорное управление</th></tr>
   <tr><td>Бег</td><td>Джойстик слева (появляется под пальцем)</td></tr>
   <tr><td>Атака</td><td>«Удар» (держать — сильнее), «Пас», «Навес»</td></tr>
-  <tr><td>Защита</td><td>«Отбор», «Прессинг» (держать), «Подкат»</td></tr>
+  <tr><td>Защита</td><td>«Отбор» (нажать — выпад, держать — сопровождение), «Помощь» — партнёр в прессинг, «Подкат»</td></tr>
   <tr><td>Спринт, смена игрока, пауза</td><td>«Спринт» (держать), «Смена», ❚❚</td></tr>
 </table>`;
 
@@ -75,7 +75,7 @@ export class HUD {
       <div class="goal-overlay"><div class="goal-text">ГОЛ!</div><div class="goal-sub"></div></div>
       <div class="replay-badge">● ПОВТОР <small>${SHOW_TOUCH ? 'Пас — пропустить' : 'Enter — пропустить'}</small></div>
       <div class="sp-hint"></div>
-      <div class="start-hint">${SHOW_TOUCH ? 'Джойстик — бег · «Удар»: держите для силы · ❚❚ — пауза' : 'WASD — бег · E — пас · Q — навес · Пробел — удар · В защите: E — отбор, Q — прессинг, F — подкат · Tab — смена'}</div>
+      <div class="start-hint">${SHOW_TOUCH ? 'Джойстик — бег · «Удар»: держите для силы · в защите «Отбор»: держать — сопровождение' : 'WASD — бег · E — пас · Q — навес · Пробел — удар · В защите: Пробел — отбор (держать — сопровождение), E — помощь партнёра, F — подкат'}</div>
       <div class="pause"></div>`;
     root.appendChild(this.el);
     const q = (s: string) => this.el.querySelector(s) as HTMLElement;
