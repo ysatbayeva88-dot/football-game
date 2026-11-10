@@ -30,12 +30,14 @@ export interface Difficulty {
   runFreq: number;
   dribble: number;
   passLane: number; // минимальная «открытость» линии паса
+  passBias: number; // склонность строить атаку пасом, а не дриблингом
+  counterPress: number; // доп. игроки в прессинг сразу после потери
 }
 
 export const DIFFICULTIES: Difficulty[] = [
-  { name: 'Любитель', react: 0.85, pressers: 1, pressSprint: 0.3, tackleCD: 1.6, tackleBonus: -0.16, shootErr: 2.3, passErr: 2.0, speedMul: 0.88, shootRange: 18, gkSkill: -0.18, runFreq: 0.25, dribble: 0.4, passLane: 0.3 },
-  { name: 'Профи', react: 0.45, pressers: 1, pressSprint: 0.75, tackleCD: 0.9, tackleBonus: 0, shootErr: 1.0, passErr: 1.0, speedMul: 0.98, shootRange: 24, gkSkill: 0, runFreq: 0.7, dribble: 0.75, passLane: 0.8 },
-  { name: 'Легенда', react: 0.22, pressers: 2, pressSprint: 1, tackleCD: 0.55, tackleBonus: 0.1, shootErr: 0.6, passErr: 0.55, speedMul: 1.04, shootRange: 27, gkSkill: 0.1, runFreq: 1, dribble: 1, passLane: 1.3 },
+  { name: 'Любитель', react: 0.85, pressers: 1, pressSprint: 0.3, tackleCD: 1.6, tackleBonus: -0.16, shootErr: 2.3, passErr: 2.0, speedMul: 0.88, shootRange: 18, gkSkill: -0.18, runFreq: 0.25, dribble: 0.4, passLane: 0.3, passBias: 0.1, counterPress: 0 },
+  { name: 'Профи', react: 0.45, pressers: 1, pressSprint: 0.75, tackleCD: 0.9, tackleBonus: 0, shootErr: 1.0, passErr: 1.0, speedMul: 0.98, shootRange: 24, gkSkill: 0, runFreq: 0.7, dribble: 0.75, passLane: 0.8, passBias: 0.25, counterPress: 1 },
+  { name: 'Легенда', react: 0.22, pressers: 2, pressSprint: 1, tackleCD: 0.55, tackleBonus: 0.1, shootErr: 0.6, passErr: 0.55, speedMul: 1.04, shootRange: 27, gkSkill: 0.1, runFreq: 1, dribble: 1, passLane: 1.3, passBias: 0.42, counterPress: 2 },
 ];
 
 /** Параметры ИИ-партнёров игрока (не зависят от сложности бота). */

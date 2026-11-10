@@ -3,7 +3,7 @@ import { BALL_R, GOAL_D, GOAL_H, GOAL_HW, GRAVITY, HALF_L, POST_R } from './cons
 import type { Player } from './Player';
 
 const AIR_DRAG = 0.008;
-export const ROLL_K = 0.12;
+export const ROLL_K = 0.17;
 const _tmp = new THREE.Vector3();
 const _axis = new THREE.Vector3();
 
@@ -59,8 +59,8 @@ export class Ball {
   offsidePlayer: Player | null = null;
   heldByGK = false;
   inGoalSide = 0; // 0, 1 (ворота +x), -1 (ворота -x)
-  friction = 1.6;
-  bounce = 0.55;
+  friction = 2.3;
+  bounce = 0.5;
   mesh: THREE.Mesh;
 
   constructor() {
@@ -223,7 +223,7 @@ function integrate(p: THREE.Vector3, v: THREE.Vector3, dt: number, friction: num
     p.y = BALL_R;
     if (v.y < -1.4) {
       v.y = -v.y * bounce;
-      v.x *= 0.86; v.z *= 0.86;
+      v.x *= 0.78; v.z *= 0.78;
       state.lastBounce = true;
     } else v.y = 0;
   }

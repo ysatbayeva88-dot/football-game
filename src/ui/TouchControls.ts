@@ -159,7 +159,7 @@ export class TouchControls {
     this.defending = d;
     const q = (c: string) => this.el.querySelector(c) as HTMLElement;
     q('.t-shoot').textContent = d ? 'Отбор' : 'Удар';
-    q('.t-pass').textContent = d ? 'Прессинг' : 'Пас';
+    q('.t-pass').textContent = d ? 'Помощь' : 'Пас';
     q('.t-lob').classList.toggle('dim', d);
     this.el.classList.toggle('defending', d);
   }

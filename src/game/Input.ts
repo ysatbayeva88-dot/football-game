@@ -3,7 +3,8 @@ import type { TouchControls } from '../ui/TouchControls';
 /**
  * Кадр ввода. Раскладка зависит от фазы (как в FC):
  *  атака  — пас, навес, удар (держать = сила);
- *  защита — отбор (E / B / «Отбор»), прессинг с вызовом партнёра (Q / A / «Прессинг», держать), подкат.
+ *  защита — «Отбор» (Пробел / B): нажать — выпад к мячу, держать — сопровождение;
+ *           «Пас» (E / A) — вызвать партнёра на прессинг; подкат (F / X).
  */
 export interface InputFrame {
   mx: number; // вправо по экрану
@@ -14,8 +15,9 @@ export interface InputFrame {
   pass: boolean;
   lob: boolean;
   slide: boolean;
-  tackle: boolean;
-  press: boolean;
+  tackle: boolean; // нажатие «Отбор» — выпад
+  contain: boolean; // удержание «Отбор» — сопровождение
+  press: boolean; // «Пас» в защите — вызвать партнёра на прессинг
   switchP: boolean;
   pause: boolean;
   skip: boolean;
@@ -23,7 +25,7 @@ export interface InputFrame {
 }
 
 export function emptyInput(): InputFrame {
-  return { mx: 0, my: 0, sprint: false, shootHeld: false, shootReleased: false, pass: false, lob: false, slide: false, tackle: false, press: false, switchP: false, pause: false, skip: false, any: false };
+  return { mx: 0, my: 0, sprint: false, shootHeld: false, shootReleased: false, pass: false, lob: false, slide: false, tackle: false, contain: false, press: false, switchP: false, pause: false, skip: false, any: false };
 }
 
 const PREVENT = new Set(['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
@@ -78,8 +80,9 @@ export class Input {
     f.mx = mx; f.my = my;
     f.sprint = this.k('ShiftLeft') || this.k('ShiftRight');
     if (def) {
-      f.tackle = this.p('KeyE') || this.p('Space');
-      f.press = this.k('KeyQ');
+      f.tackle = this.p('Space');
+      f.contain = this.k('Space') || this.k('KeyQ');
+      f.press = this.k('KeyE');
     } else {
       f.pass = this.p('KeyE');
       f.lob = this.p('KeyQ');
@@ -110,6 +113,7 @@ export class Input {
       if (def) {
         if (b(0)) f.press = true;
         if (edge(1)) f.tackle = true;
+        if (b(1)) f.contain = true;
         if (edge(2)) f.slide = true;
       } else {
         if (edge(0)) f.pass = true;
@@ -135,6 +139,7 @@ export class Input {
       f.sprint ||= t.sprint;
       if (def) {
         f.tackle ||= t.shootPressed;
+        f.contain ||= t.shootHeld;
         f.press ||= t.passHeld;
       } else {
         f.shootHeld ||= t.shootHeld;

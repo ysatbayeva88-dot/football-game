@@ -10,11 +10,12 @@ export interface TeamCtx {
   chasePoint: THREE.Vector3;
   pressers: Player[];
   offsideLine: number; // в координатах команды
+  defLine: number; // линия обороны (координаты команды)
   attacking: boolean;
 }
 
 export function newCtx(): TeamCtx {
-  return { chaser: null, chaseT: 9, chasePoint: new THREE.Vector3(), pressers: [], offsideLine: 0, attacking: false };
+  return { chaser: null, chaseT: 9, chasePoint: new THREE.Vector3(), pressers: [], offsideLine: 0, defLine: -30, attacking: false };
 }
 
 const _v = new THREE.Vector3();
@@ -51,6 +52,9 @@ export function computeContext(m: Match) {
     // линия офсайда: второй последний защитник соперника
     const xs = team.opp.players.map(o => o.pos.x * team.dir).sort((a, b) => b - a);
     c.offsideLine = Math.max(0, xs[1] ?? 0, ball.pos.x * team.dir);
+    let lx = 0;
+    for (let i = 1; i <= 4; i++) lx += formationTarget(team, i, false, ball.pos, _v).x * team.dir;
+    c.defLine = lx / 4;
 
     c.chaser = null;
     c.chaseT = 99;
@@ -70,7 +74,9 @@ export function computeContext(m: Match) {
     // прессинг
     c.pressers.length = 0;
     if (owner && owner.team !== team && !ball.heldByGK) {
-      const n = team.isHuman ? 1 : team.ai.pressers;
+      // контрпрессинг: сразу после потери мяча в отбор идут больше игроков
+      const counter = m.time - m.lossTime[team.idx] < 3 ? team.ai.counterPress : 0;
+      const n = team.isHuman ? 1 : team.ai.pressers + counter;
       const sorted = team.players.filter(p => !p.isGK && !p.busy && (!team.isHuman || p !== m.controlled))
         .sort((a, b) => a.dist2D(owner.pos) - b.dist2D(owner.pos));
       for (let i = 0; i < n && i < sorted.length; i++) {
@@ -202,7 +208,7 @@ export function aiCarrier(m: Match, p: Player, dt: number) {
     }
     // пас
     const bp = bestPass(m, p, diff.passLane);
-    const pp = press < 2.2 ? 0.9 : press < 4.5 ? 0.45 : 0.14;
+    const pp = press < 2.2 ? 0.9 : press < 4.5 ? 0.45 + diff.passBias * 0.5 : 0.1 + diff.passBias;
     const progress = bp ? (bp.to.pos.x - p.pos.x) * dir : 0;
     if (bp && bp.score > (press < 3 ? -1 : 3) && (press < 3 || progress > 4 || tx < -25) && Math.random() < pp) {
       m.passTo(p, bp.to, null, bp.lob, diff.passErr);
@@ -231,7 +237,7 @@ export function aiCarrier(m: Match, p: Player, dt: number) {
   _v.y = 0;
   _v.normalize();
   const sprint = !blocked || Math.random() < diff.dribble * 0.5;
-  const sp = sprint ? p.sprintSpeed() * 0.94 : p.jogSpeed();
+  const sp = sprint ? p.sprintSpeed() : p.jogSpeed();
   p.desired.copy(_v).multiplyScalar(sp);
 }
 
@@ -262,14 +268,20 @@ export function aiOffBall(m: Match, p: Player, dt: number) {
   if (c.pressers.includes(p) && ball.owner) {
     const o = ball.owner;
     const ownGoalX = -team.dir * HALF_L;
-    _v.set(ownGoalX - o.pos.x, 0, -o.pos.z).normalize();
-    _w.copy(o.pos).addScaledVector(o.vel, 0.25).addScaledVector(_v, 0.9);
     const d = p.dist2D(o.pos);
-    const sprint = d > 2.5 && (team.isHuman || Math.random() < diff.pressSprint + 0.2);
-    moveTo(p, _w, sprint, 0.2);
-    if (d < 1.5 && p.tackleCD <= 0) {
-      if (Math.random() < 0.5) m.tryTackle(p);
-      else p.tackleCD = 0.3;
+    if (d > 3.2) {
+      // подбегает к позиции между соперником и воротами
+      _v.set(ownGoalX - o.pos.x, 0, -o.pos.z).normalize();
+      _w.copy(o.pos).addScaledVector(o.vel, 0.35).addScaledVector(_v, 1.4);
+      const sprint = team.isHuman || Math.random() < diff.pressSprint + 0.25;
+      moveTo(p, _w, sprint, 0.2);
+    } else {
+      // сопровождает и не пробегает мимо
+      m.contain(p, o, 1.3);
+    }
+    if (d < 1.9 && p.tackleCD <= 0 && p.tackleT <= 0) {
+      if (Math.random() < 0.45) m.tryTackle(p);
+      else p.tackleCD = 0.25;
     }
     return;
   }
@@ -295,9 +307,16 @@ export function aiOffBall(m: Match, p: Player, dt: number) {
     if (p.runT <= 0) {
       p.runT = rand(2.5, 5);
       p.runTarget = null;
+      const bx = ball.pos.x * team.dir, bz = ball.pos.z * team.dir;
+      const fullback = role === 'DEF' && (p.slotIndex === 1 || p.slotIndex === 4);
       if ((role === 'FWD' || (role === 'MID' && Math.random() < 0.3)) && Math.random() < diff.runFreq) {
+        // забегание за спину защитникам
         const rx = Math.min(c.offsideLine + rand(2, 9), HALF_L - 6);
         p.runTarget = team.toWorld(rx, clamp(p.pos.z * team.dir * 0.6 + rand(-8, 8), -22, 22));
+      } else if (fullback && bx > -5 && Math.sign(bz) === Math.sign(p.slot.z) && Math.random() < diff.runFreq * 0.8) {
+        // крайний защитник идёт в обгон по флангу
+        const rx = Math.min(bx + rand(6, 12), c.offsideLine - 0.5, HALF_L - 10);
+        p.runTarget = team.toWorld(rx, Math.sign(p.slot.z) * HALF_W * 0.85);
       }
     }
     let sprint = false;
@@ -333,6 +352,12 @@ export function aiOffBall(m: Match, p: Player, dt: number) {
     _w.set(ownGoalX - mark.pos.x, 0, -mark.pos.z).normalize();
     _w.multiplyScalar(1.8).add(mark.pos);
     _v.lerp(_w, role === 'DEF' ? 0.6 : 0.45);
+  }
+  // защитники держат общую линию (и ловят в офсайд), кроме опеки соперника за спиной
+  if (role === 'DEF') {
+    const lineWorld = c.defLine * team.dir;
+    const markDeep = mark && (mark.pos.x * team.dir) < c.defLine - 2;
+    if (!markDeep) _v.x = lineWorld;
   }
   // если мяч за спиной — быстро возвращаться
   const behind = (ball.pos.x - p.pos.x) * team.dir < -4;

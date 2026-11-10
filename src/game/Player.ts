@@ -33,6 +33,7 @@ export class Player {
   tackleDone = false;
   riseT = 0; // вставание после подката
   accelMul = 1; // управляемый игроком — отзывчивее
+  jockey = false; // сопровождение: лицом к сопернику
   kickType = 0; // 0 пас, 1 удар, 2 отбор (для анимации)
   celebrateType = 1;
 
@@ -51,8 +52,12 @@ export class Player {
   get isGK() { return this.slotIndex === 0; }
   get busy() { return this.stunT > 0 || this.slideT > 0 || this.diveT > 0; }
 
-  jogSpeed() { return (4.4 + this.data.pace * 0.013) * this.speedMul; }
-  sprintSpeed() { return (6.1 + this.data.pace * 0.036) * this.speedMul; }
+  /** Бег трусцой ~5.6–6.2 м/с. */
+  jogSpeed() { return (5.0 + this.data.pace * 0.013) * this.speedMul; }
+  /** Спринт: ~8.5 м/с у среднего игрока, до ~9.6 у самых быстрых. */
+  sprintSpeed() { return Math.min(9.7, 4.75 + this.data.pace * 0.05) * this.speedMul; }
+  /** С мячом игрок медленнее на 10–15% (меньше у хороших дриблёров). */
+  ballMul() { return 0.85 + this.data.dribbling * 0.0004; }
 
   forward(out = new THREE.Vector3()) {
     return out.set(Math.sin(this.facing), 0, Math.cos(this.facing));
@@ -94,19 +99,28 @@ export class Player {
     if (this.slideT > 0) {
       this.slideT -= dt;
       this.vel.multiplyScalar(Math.max(0, 1 - 1.9 * dt));
-      if (this.slideT <= 0) { this.riseT = 0.5; this.stunT = 0.5; this.fallen = 3; this.slideWon = false; }
+      if (this.slideT <= 0) { this.riseT = 0.3; this.stunT = 0.3; this.fallen = 3; this.slideWon = false; }
     } else if (this.stunT > 0) {
       this.stunT -= dt;
       this.vel.multiplyScalar(Math.max(0, 1 - 7 * dt));
-      if (this.riseT > 0) { this.riseT -= dt; this.fallen = 3 + Math.min(0.999, 1 - this.riseT / 0.5); }
+      if (this.riseT > 0) { this.riseT -= dt; this.fallen = 3 + Math.min(0.999, 1 - this.riseT / 0.3); }
       if (this.stunT <= 0) { this.fallen = 0; this.riseT = 0; }
     } else {
-      const dvx = this.desired.x - this.vel.x, dvz = this.desired.z - this.vel.z;
+      let dx = this.desired.x, dz = this.desired.z;
+      if (hasBall) { const k = this.ballMul(); dx *= k; dz *= k; }
+      const dvx = dx - this.vel.x, dvz = dz - this.vel.z;
       const dl = Math.hypot(dvx, dvz);
-      const acc = (14 + this.data.physical * 0.05 + this.data.pace * 0.04) * (hasBall ? 0.85 : 1) * this.accelMul * (this.tackleT > 0 ? 1.8 : 1);
+      const cur = this.speed(), want = Math.hypot(dx, dz);
+      // инерция: разгон с ускорением, торможение резче, разворот на скорости — медленнее
+      let acc = (7.5 + this.data.physical * 0.025 + this.data.pace * 0.035) * this.accelMul * (this.tackleT > 0 ? 1.6 : 1);
+      if (want < cur - 0.3) acc *= 1.5;
+      if (cur > 4 && want > 0.5) {
+        const dot = (this.vel.x * dx + this.vel.z * dz) / (cur * want);
+        if (dot < 0.3) acc *= 0.6 + 0.1 * (this.data.physical / 100) + (dot + 1) * 0.15;
+      }
       const maxDv = acc * dt;
       if (dl > maxDv) { this.vel.x += (dvx / dl) * maxDv; this.vel.z += (dvz / dl) * maxDv; }
-      else { this.vel.x = this.desired.x; this.vel.z = this.desired.z; }
+      else { this.vel.x = dx; this.vel.z = dz; }
     }
 
     this.pos.x += this.vel.x * dt;
@@ -119,8 +133,11 @@ export class Player {
 
     const sp = this.speed();
     if (this.slideT <= 0 && this.stunT <= 0) {
-      if (sp > 0.6) {
-        const turn = (hasBall ? 5 + this.data.dribbling / 18 : 11) * (this.accelMul > 1 ? 1.4 : 1);
+      if (this.jockey && this.lookAt) {
+        const a = Math.atan2(this.lookAt.x - this.pos.x, this.lookAt.z - this.pos.z);
+        this.facing = angleLerp(this.facing, a, Math.min(1, 10 * dt));
+      } else if (sp > 0.6) {
+        const turn = (hasBall ? 5 + this.data.dribbling / 18 : 11) * (this.accelMul > 1 ? 1.3 : 1) * Math.max(0.55, 1.15 - sp / 16);
         this.facing = angleLerp(this.facing, Math.atan2(this.vel.x, this.vel.z), Math.min(1, turn * dt));
       } else if (this.lookAt) {
         const a = Math.atan2(this.lookAt.x - this.pos.x, this.lookAt.z - this.pos.z);
