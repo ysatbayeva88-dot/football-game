@@ -31,13 +31,13 @@ export class Team {
     public ai: Difficulty,
   ) {
     this.kit = data[kitName];
-    this.kitMats = new KitMaterials(this.kit);
+    this.kitMats = new KitMaterials(this.kit, data.emblem);
     this.gkMats = new KitMaterials(data.gk);
     this.slots = FORMATIONS[formation];
     this.bench = data.subs.map(p => ({ ...p }));
     data.starters.forEach((pd, i) => {
       const mats = i === 0 ? this.gkMats : this.kitMats;
-      const model = new PlayerModel(mats, pd.number, hashStr(pd.name));
+      const model = new PlayerModel(mats, pd.number, hashStr(pd.name), pd.name, i === 0);
       const p = new Player({ ...pd }, this, i, model);
       p.speedMul = isHuman ? 1 : ai.speedMul;
       this.players.push(p);
@@ -57,7 +57,7 @@ export class Team {
     p.data = { ...incoming };
     this.bench.splice(benchIndex, 1);
     this.subsUsed++;
-    p.model.setKit(slotIndex === 0 ? this.gkMats : this.kitMats, incoming.number);
+    p.model.setKit(slotIndex === 0 ? this.gkMats : this.kitMats, incoming.number, incoming.name);
     p.speedMul = this.isHuman ? 1 : this.ai.speedMul;
     return { outgoing, incoming };
   }

@@ -33,6 +33,8 @@ export class Player {
   tackleDone = false;
   riseT = 0; // вставание после подката
   accelMul = 1; // управляемый игроком — отзывчивее
+  kickType = 0; // 0 пас, 1 удар, 2 отбор (для анимации)
+  celebrateType = 1;
 
   // ИИ
   aiTimer = Math.random() * 0.5;
@@ -141,10 +143,11 @@ export class Player {
     out[o + 4] = this.phase;
     out[o + 5] = Math.min(1, this.speed() / 8.5);
     out[o + 6] = this.kickAnim;
-    out[o + 7] = this.slideT > 0 ? 1 : 0;
+    out[o + 7] = this.slideT > 0 ? Math.max(0.001, 1 - this.slideT / 0.55) : 0;
     out[o + 8] = this.diveT > 0 ? 1 - this.diveT / this.diveDur : -1;
     out[o + 9] = this.diveSide;
-    out[o + 10] = this.celebrate ? 1 : 0;
+    out[o + 10] = this.celebrate ? this.celebrateType : 0;
     out[o + 11] = this.fallen;
+    out[o + 12] = this.kickType;
   }
 }

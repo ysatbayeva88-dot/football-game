@@ -11,6 +11,9 @@ export class CameraRig {
   private t = 0;
   private replaySide = 1;
   shake = 0;
+  /** Направление атаки владеющей команды (−1..1), камера чуть смещается и наклоняется вперёд. */
+  attack = 0;
+  private attackS = 0;
 
   constructor(aspect: number) {
     this.cam = new THREE.PerspectiveCamera(38, aspect, 0.3, 5000);
@@ -35,10 +38,12 @@ export class CameraRig {
     let k = 1 - Math.exp(-3.2 * dt);
     switch (this.mode) {
       case 'broadcast': {
-        const tx = clamp(focus.x, -HALF_L + 14, HALF_L - 14);
+        this.attackS += (this.attack - this.attackS) * Math.min(1, dt * 0.9);
+        const a = this.attackS;
+        const tx = clamp(focus.x + a * 4, -HALF_L + 13, HALF_L - 13);
         const tz = clamp(focus.z * 0.5, -14, 10);
-        desiredPos.set(tx * 0.88, 17, 35 + tz);
-        desiredLook.set(tx, 0, tz - 2.5);
+        desiredPos.set(tx * 0.86 - a * 5, 19.5, 37 + tz);
+        desiredLook.set(tx + a * 3, 0, tz - 2.5);
         break;
       }
       case 'intro': {

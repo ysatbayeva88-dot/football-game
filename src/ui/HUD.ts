@@ -14,24 +14,26 @@ export interface HUDCallbacks {
 export const CONTROLS_HTML = `
 <table class="controls">
   <tr><th>Действие</th><th>Клавиатура</th><th>Геймпад</th></tr>
-  <tr><td>Бег</td><td>W A S D / стрелки</td><td>Левый стик</td></tr>
-  <tr><td>Спринт</td><td>Shift</td><td>RT</td></tr>
-  <tr><td>Удар (держать — сильнее)</td><td>Пробел</td><td>B</td></tr>
-  <tr><td>Пас / отбор без мяча</td><td>E</td><td>A</td></tr>
+  <tr><td>Бег / спринт</td><td>W A S D, Shift</td><td>Левый стик, RT</td></tr>
+  <tr><th colspan="3">Атака</th></tr>
+  <tr><td>Пас (партнёру в направлении стика)</td><td>E</td><td>A</td></tr>
   <tr><td>Навес / длинный пас</td><td>Q</td><td>X</td></tr>
-  <tr><td>Подкат</td><td>F</td><td>Y</td></tr>
+  <tr><td>Удар (держать — сильнее)</td><td>Пробел</td><td>B</td></tr>
+  <tr><th colspan="3">Защита</th></tr>
+  <tr><td>Отбор (выпад к мячу)</td><td>E или Пробел</td><td>B</td></tr>
+  <tr><td>Прессинг + вызов партнёра (держать)</td><td>Q</td><td>A</td></tr>
+  <tr><td>Подкат (наводится на мяч)</td><td>F</td><td>X / Y</td></tr>
+  <tr><th colspan="3">Общее</th></tr>
   <tr><td>Смена игрока</td><td>Tab</td><td>LB</td></tr>
-  <tr><td>Пауза</td><td>Esc / P</td><td>Start</td></tr>
-  <tr><td>Пропустить повтор</td><td>Enter / Пробел</td><td>A</td></tr>
+  <tr><td>Пауза / пропустить повтор</td><td>Esc / Enter</td><td>Start / A</td></tr>
 </table>
-<p class="hint-small">Направление при ударе задаёт угол: W/S — ближний/дальний угол. На стандартах стрелками целитесь, E — пас, Q — навес, Пробел — удар.</p>
+<p class="hint-small">Голубая стрелка над партнёром показывает, кому уйдёт пас. Уровень ассиста (Полный / Средний / Ручной) — в настройках матча.</p>
 <table class="controls touch-table">
   <tr><th>На телефоне</th><th>Сенсорное управление</th></tr>
   <tr><td>Бег</td><td>Джойстик слева (появляется под пальцем)</td></tr>
-  <tr><td>Удар</td><td>«Удар» — держите дольше для силы</td></tr>
-  <tr><td>Пас / отбор, навес, подкат</td><td>«Пас», «Навес», «Подкат»</td></tr>
-  <tr><td>Спринт, смена игрока</td><td>«Спринт» (держать), «Смена»</td></tr>
-  <tr><td>Пауза</td><td>Кнопка ❚❚ справа вверху</td></tr>
+  <tr><td>Атака</td><td>«Удар» (держать — сильнее), «Пас», «Навес»</td></tr>
+  <tr><td>Защита</td><td>«Отбор», «Прессинг» (держать), «Подкат»</td></tr>
+  <tr><td>Спринт, смена игрока, пауза</td><td>«Спринт» (держать), «Смена», ❚❚</td></tr>
 </table>`;
 
 export class HUD {
@@ -73,7 +75,7 @@ export class HUD {
       <div class="goal-overlay"><div class="goal-text">ГОЛ!</div><div class="goal-sub"></div></div>
       <div class="replay-badge">● ПОВТОР <small>${SHOW_TOUCH ? 'Пас — пропустить' : 'Enter — пропустить'}</small></div>
       <div class="sp-hint"></div>
-      <div class="start-hint">${SHOW_TOUCH ? 'Джойстик — бег · «Удар»: держите для силы · ❚❚ — пауза' : 'WASD — бег · Shift — спринт · Пробел — удар · E — пас · Q — навес · F — подкат · Tab — смена · Esc — пауза'}</div>
+      <div class="start-hint">${SHOW_TOUCH ? 'Джойстик — бег · «Удар»: держите для силы · ❚❚ — пауза' : 'WASD — бег · E — пас · Q — навес · Пробел — удар · В защите: E — отбор, Q — прессинг, F — подкат · Tab — смена'}</div>
       <div class="pause"></div>`;
     root.appendChild(this.el);
     const q = (s: string) => this.el.querySelector(s) as HTMLElement;

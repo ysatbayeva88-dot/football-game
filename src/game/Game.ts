@@ -10,7 +10,8 @@ import { Stadium } from './Stadium';
 import type { MatchConfig, MatchResult } from './types';
 import { HUD } from '../ui/HUD';
 import { TouchControls } from '../ui/TouchControls';
-import { SHOW_TOUCH } from './quality';
+import { IS_MOBILE, SHOW_TOUCH } from './quality';
+import { PostFX } from './PostFX';
 
 export interface GameCallbacks {
   onEnd(result: MatchResult): void;
@@ -38,6 +39,9 @@ export class Game {
   private marker!: THREE.Mesh;
   private ballFocus = new THREE.Vector3();
   private touch: TouchControls | null = null;
+  private post: PostFX | null = null;
+  private passMarker!: THREE.Mesh;
+  private fps = { t: 0, n: 0, value: 60 };
   private onResize = () => this.resize();
 
   constructor(private renderer: THREE.WebGLRenderer, private hudRoot: HTMLElement, private cfg: MatchConfig, private audio: GameAudio, private cb: GameCallbacks) {
@@ -51,8 +55,17 @@ export class Game {
     const m = this.match;
     progress(0.2, 'Строим стадион');
     await tick();
+    const gfx = this.cfg.graphics ?? 'high';
+    const r = this.renderer;
+    const dpr = window.devicePixelRatio || 1;
+    r.setPixelRatio(gfx === 'low' ? Math.min(dpr, IS_MOBILE ? 1 : 1.25) : gfx === 'medium' ? Math.min(dpr, 1.5) : Math.min(dpr, 2));
+    r.shadowMap.enabled = gfx !== 'low';
+    r.shadowMap.type = THREE.PCFSoftShadowMap;
     const h = m.teams[0].kit, a = m.teams[1].kit;
-    this.stadium = new Stadium(this.scene, this.renderer, this.cfg.stadium, [h.shirt, h.stripe, h.shorts], [a.shirt, a.stripe]);
+    this.stadium = new Stadium(this.scene, r, this.cfg.stadium, [h.shirt, h.stripe, h.shorts], [a.shirt, a.stripe], gfx, {
+      home: { short: m.teams[0].data.short, color: h.shirt },
+      away: { short: m.teams[1].data.short, color: a.shirt },
+    });
     progress(0.55, 'Выход команд');
     await tick();
     for (const p of m.players) this.scene.add(p.model.root);
@@ -62,6 +75,14 @@ export class Game {
     this.marker = new THREE.Mesh(ring, new THREE.MeshBasicMaterial({ color: '#ffe14d', transparent: true, opacity: 0.9, depthWrite: false }));
     this.marker.renderOrder = 2;
     this.scene.add(this.marker);
+    // индикатор адресата паса
+    const cone = new THREE.ConeGeometry(0.22, 0.42, 4);
+    cone.rotateX(Math.PI);
+    this.passMarker = new THREE.Mesh(cone, new THREE.MeshBasicMaterial({ color: '#38e1ff', transparent: true, opacity: 0.95, depthTest: false }));
+    this.passMarker.renderOrder = 3;
+    this.passMarker.visible = false;
+    this.scene.add(this.passMarker);
+    if (gfx === 'high') this.post = new PostFX(r, this.scene, this.rig.cam, this.cfg.stadium !== 'day');
     this.replay = new Replay(m);
     this.hud = new HUD(this.hudRoot, m, {
       onResume: () => this.setPaused(false),
@@ -99,6 +120,7 @@ export class Game {
   private resize() {
     const w = window.innerWidth, h = window.innerHeight;
     this.renderer.setSize(w, h);
+    this.post?.setSize(w, h, this.renderer.getPixelRatio());
     this.rig.cam.aspect = w / h;
     this.rig.cam.updateProjectionMatrix();
   }
@@ -162,23 +184,31 @@ export class Game {
     this.rig.snap(this.match.ball.pos);
   }
 
-  private poseAll() {
+  private poseAll(dt = 1 / 60) {
     const tmp = new Float32Array(POSE_SIZE);
     for (const p of this.match.players) {
       p.writePose(tmp, 0);
-      p.model.pose(tmp, 0);
+      p.model.pose(tmp, 0, dt);
     }
+  }
+
+  private draw(dt: number) {
+    if (this.post) this.post.render(dt);
+    else this.renderer.render(this.scene, this.rig.cam);
   }
 
   private frame = (now: number) => {
     this.raf = requestAnimationFrame(this.frame);
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
-    const inp = this.input.poll();
     const m = this.match;
+    this.input.defending = m.state === 'play' && m.humanDefending();
+    const inp = this.input.poll();
+    this.fps.t += dt; this.fps.n++;
+    if (this.fps.t >= 1) { this.fps.value = this.fps.n / this.fps.t; this.fps.t = 0; this.fps.n = 0; }
 
     if (inp.pause && !this.ended && this.introT >= 3) this.setPaused(!this.paused);
-    if (this.paused) { this.renderer.render(this.scene, this.rig.cam); return; }
+    if (this.paused) { this.draw(dt); return; }
 
     if (this.replayActive) {
       if (inp.skip) this.endReplay();
@@ -188,7 +218,8 @@ export class Game {
         else {
           m.ball.mesh.position.set(f[0], f[1], f[2]);
           m.ball.mesh.rotation.x += dt * 4;
-          m.players.forEach((p, i) => p.model.pose(f, 3 + i * POSE_SIZE));
+          m.players.forEach((p, i) => p.model.pose(f, 3 + i * POSE_SIZE, dt));
+          this.passMarker.visible = false;
           this.ballFocus.set(f[0], f[1], f[2]);
           this.rig.update(dt, this.ballFocus);
           this.marker.visible = false;
@@ -208,12 +239,17 @@ export class Game {
           this.rig.update(dt, cel ? cel.pos : m.ball.pos);
         } else {
           if (this.rig.mode !== 'broadcast') this.rig.setMode('broadcast');
+          const poss = m.ball.owner?.team ?? m.ball.intended?.team ?? null;
+          this.rig.attack = poss ? poss.dir * 0.8 : 0;
           this.ballFocus.lerp(m.ball.pos, Math.min(1, dt * 6));
           this.rig.update(dt, this.ballFocus);
         }
       }
-      this.poseAll();
+      this.poseAll(dt);
       m.ball.updateVisual(dt);
+      const pv = m.state === 'play' ? m.passPreview : null;
+      this.passMarker.visible = !!pv;
+      if (pv) this.passMarker.position.set(pv.pos.x, pv.pos.y + 2.35 + Math.sin(now * 0.01) * 0.07, pv.pos.z);
       const c = m.controlled;
       const showMarker = this.introT >= 3 && m.state !== 'goal' && m.state !== 'fulltime' && m.state !== 'halftime';
       this.marker.visible = showMarker;
@@ -225,6 +261,7 @@ export class Game {
     if (m.state === 'play' && Math.abs(m.ball.pos.x) > 36 && Math.abs(m.ball.pos.z) < 22) this.audio.excite(0.3);
     this.excite = Math.max(0, this.excite - dt * 0.3);
     this.stadium.update(dt, now / 1000, Math.min(1, this.excite));
+    this.stadium.updateScoreboard(m.teams[0].score, m.teams[1].score, m.clock);
     this.audio.update(dt);
     this.hud.update(dt, this.rig.cam, window.innerWidth, window.innerHeight, this.introT >= 3 ? m.controlled : null, this.replayActive);
 
@@ -235,7 +272,7 @@ export class Game {
         this.cb.onEnd(m.result());
       }
     }
-    this.renderer.render(this.scene, this.rig.cam);
+    this.draw(dt);
   };
 
   dispose() {
@@ -247,6 +284,8 @@ export class Game {
     this.audio.stopAmbience();
     this.hud?.dispose();
     this.stadium?.dispose();
+    this.post?.dispose();
+    this.passMarker?.geometry.dispose();
     this.match?.dispose();
     this.marker?.geometry.dispose();
     (this.marker?.material as THREE.Material | undefined)?.dispose();

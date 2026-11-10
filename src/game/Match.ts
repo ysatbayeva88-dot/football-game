@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Ball, ROLL_K } from './Ball';
 import {
   ALLY_AI, ASSISTS, BALL_R, CIRCLE_R, DIFFICULTIES, GOAL_HW, GRAVITY, HALF_L, HALF_W, KICKOFF_PARTNER, PEN_D, PEN_HW, PEN_SPOT,
-  angleLerp, clamp, gauss, rand,
+  angleLerp, clamp, gauss, hashStr, rand,
 } from './constants';
 import { aiCarrier, aiGK, aiHold, aiOffBall, bestPass, computeContext, formationTarget, inOppBox, inOwnBox, laneOpen, newCtx } from './AI';
 import type { TeamCtx } from './AI';
@@ -410,6 +410,7 @@ export class Match {
     ball.intended = null;
     ball.offsidePlayer = null;
     p.kickAnim = 0;
+    p.kickType = header ? 0 : 1;
     p.kickCD = 0.35;
     this.lastPasser = null;
     const st = p.team.stats;
@@ -438,7 +439,7 @@ export class Match {
       if (!lob && !throwIn) {
         // мяч приходит в ноги: стоящему — точно в него, бегущему — на ход
         const fast = p.team.isHuman && !this.autoplay && this.cfg.assist === 'full';
-        const vend = fast ? Math.min(15, 10.5 + d * 0.15) : Math.min(13, 8 + d * 0.15);
+        const vend = fast ? Math.min(16, 11.5 + d * 0.15) : Math.min(13, 8 + d * 0.15);
         const aEff = ball.friction + ROLL_K * (vend + 12) * 0.5;
         let v0 = clamp(Math.sqrt(vend * vend + 2 * aEff * d), 7, 28);
         tt = (2 * d) / (v0 + vend);
@@ -489,6 +490,7 @@ export class Match {
     ball.intended = receiver;
     ball.offsidePlayer = offPlayer;
     p.kickAnim = 0;
+    p.kickType = lob ? 1 : 0;
     p.kickCD = 0.3;
     this.lastPasser = p;
     this.shotPending = null;
@@ -563,6 +565,7 @@ export class Match {
     if (!c || c.team === p.team || ball.heldByGK || this.state !== 'play' || p.busy || p.tackleT > 0 || p.tackleCD > 0) return;
     p.tackleCD = p === this.controlled ? 0.55 : p.team.ai.tackleCD;
     p.kickAnim = 0;
+    p.kickType = 2;
     if (p.dist2D(ball.pos) > 3.2) return; // слишком далеко — только замах
     p.tackleT = 0.35;
     p.tackleDone = false;
@@ -923,6 +926,7 @@ export class Match {
     this.scoringTeam = team;
     this.celebrant = scorer && !own ? scorer : team.players[9];
     this.celebrant.celebrate = true;
+    this.celebrant.celebrateType = 1 + (hashStr(this.celebrant.data.name) % 3);
     this.ball.owner = null;
     this.pending = null;
     this.charging = false;

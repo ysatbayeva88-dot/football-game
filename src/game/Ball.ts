@@ -7,28 +7,44 @@ export const ROLL_K = 0.12;
 const _tmp = new THREE.Vector3();
 const _axis = new THREE.Vector3();
 
+/** Текстура классического мяча (усечённый икосаэдр): 12 чёрных пятиугольников, 20 белых шестиугольников со швами. */
 function makeBallTexture() {
+  const W = 512, H = 256;
   const c = document.createElement('canvas');
-  c.width = 256; c.height = 128;
+  c.width = W; c.height = H;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#f4f4f4';
-  g.fillRect(0, 0, 256, 128);
-  g.fillStyle = '#16181d';
-  const spots = [[32, 30], [96, 64], [160, 30], [224, 64], [32, 98], [160, 98], [96, 10], [224, 118], [0, 64], [256, 64]];
-  for (const [x, y] of spots) {
-    g.beginPath();
-    for (let i = 0; i < 5; i++) {
-      const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
-      const px = x + Math.cos(a) * 14, py = y + Math.sin(a) * 12;
-      if (i === 0) g.moveTo(px, py); else g.lineTo(px, py);
+  const img = g.createImageData(W, H);
+  const t = (1 + Math.sqrt(5)) / 2;
+  const ico = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]]
+    .map(v => new THREE.Vector3(...v).normalize());
+  const faces = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]]
+    .map(f => new THREE.Vector3().add(ico[f[0]]).add(ico[f[1]]).add(ico[f[2]]).normalize());
+  const centers = [...ico.map(v => ({ v, pent: true })), ...faces.map(v => ({ v, pent: false }))];
+  const d = new THREE.Vector3();
+  for (let y = 0; y < H; y++) {
+    const phi = (y / H) * Math.PI;
+    for (let x = 0; x < W; x++) {
+      const th = (x / W) * Math.PI * 2;
+      d.set(-Math.cos(th) * Math.sin(phi), Math.cos(phi), Math.sin(th) * Math.sin(phi));
+      let b1 = -2, b2 = -2, pent = false;
+      for (const cc of centers) {
+        // пятиугольники чуть меньше по весу, чтобы получилась правильная форма
+        const dot = d.dot(cc.v) + (cc.pent ? -0.012 : 0);
+        if (dot > b1) { b2 = b1; b1 = dot; pent = cc.pent; } else if (dot > b2) b2 = dot;
+      }
+      const seam = b1 - b2 < 0.012;
+      let col = pent ? 24 : 246;
+      if (seam) col = pent ? 60 : 150;
+      const n = (Math.random() - 0.5) * 6;
+      const o = (y * W + x) * 4;
+      img.data[o] = col + n; img.data[o + 1] = col + n; img.data[o + 2] = col + n + (pent ? 6 : 0); img.data[o + 3] = 255;
     }
-    g.closePath(); g.fill();
   }
-  g.strokeStyle = '#d23b3b'; g.lineWidth = 3;
-  g.beginPath(); g.moveTo(0, 64); g.lineTo(256, 64); g.stroke();
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  g.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
 }
 
 export class Ball {
@@ -48,8 +64,8 @@ export class Ball {
   mesh: THREE.Mesh;
 
   constructor() {
-    const geo = new THREE.SphereGeometry(BALL_R, 20, 14);
-    const mat = new THREE.MeshStandardMaterial({ map: makeBallTexture(), roughness: 0.45 });
+    const geo = new THREE.SphereGeometry(BALL_R, 32, 20);
+    const mat = new THREE.MeshStandardMaterial({ map: makeBallTexture(), roughness: 0.38, metalness: 0.0 });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.castShadow = true;
   }

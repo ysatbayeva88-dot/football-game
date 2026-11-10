@@ -5,7 +5,7 @@ import { GameAudio } from './game/Audio';
 import { Game } from './game/Game';
 import type { MatchConfig, TeamData } from './game/types';
 import { Menu } from './ui/Menu';
-import { IS_TOUCH, LOW_QUALITY, SHOW_TOUCH } from './game/quality';
+import { IS_MOBILE, IS_TOUCH, SHOW_TOUCH } from './game/quality';
 
 const teams = (teamsJson as unknown as { teams: TeamData[] }).teams;
 
@@ -18,11 +18,11 @@ const hudRoot = document.createElement('div');
 hudRoot.className = 'hud-root';
 app.appendChild(hudRoot);
 
-const renderer = new THREE.WebGLRenderer({ antialias: !LOW_QUALITY, powerPreference: 'high-performance' });
-renderer.setPixelRatio(LOW_QUALITY ? 1 : Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: !IS_MOBILE, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, IS_MOBILE ? 1 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = !LOW_QUALITY;
+renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 canvasWrap.appendChild(renderer.domElement);
 
