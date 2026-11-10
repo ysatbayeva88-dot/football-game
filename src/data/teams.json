@@ -1,5 +1,5 @@
 {
-  "_comment": "Составы команд. Можно свободно редактировать: имена, номера, позиции (GK, RB, CB, LB, CDM, CM, CAM, RM, LM, RW, LW, ST) и рейтинги 1-99. starters — 11 игроков в порядке расстановки: GK, правый защитник, 2 центральных защитника, левый защитник, затем 3-4 полузащитника и 2-3 нападающих (справа налево). subs — 5 запасных. Для вратарей defending = реакция/прыжок.",
+  "_comment": "Составы команд. Можно свободно редактировать: имена, номера, позиции (GK, RB, CB, LB, CDM, CM, CAM, RM, LM, RW, LW, ST) и рейтинги 1-99. starters — 11 игроков в порядке расстановки: GK, правый защитник, 2 центральных защитника, левый защитник, затем 3-4 полузащитника и 2-3 нападающих (справа налево). subs — 5 запасных. Для вратарей defending = реакция/прыжок. crest — имя файла эмблемы в public/crests/ (без .png); если файла нет, рисуется простая эмблема из поля emblem.",
   "teams": [
     {
       "id": "rma",
@@ -13,6 +13,7 @@
         "fg": "#1b2a6b",
         "border": "#d4af37"
       },
+      "crest": "real-madrid",
       "home": {
         "shirt": "#f7f7f7",
         "sleeves": "#f7f7f7",
@@ -249,6 +250,7 @@
         "fg": "#ffd23f",
         "border": "#004d98"
       },
+      "crest": "barcelona",
       "home": {
         "shirt": "#a50044",
         "sleeves": "#004d98",
@@ -485,6 +487,7 @@
         "fg": "#ffffff",
         "border": "#da291c"
       },
+      "crest": "psg",
       "home": {
         "shirt": "#0a1f44",
         "sleeves": "#0a1f44",
@@ -721,6 +724,7 @@
         "fg": "#1c2c5b",
         "border": "#ffffff"
       },
+      "crest": "man-city",
       "home": {
         "shirt": "#6cabdd",
         "sleeves": "#6cabdd",
@@ -957,6 +961,7 @@
         "fg": "#ffffff",
         "border": "#00b2a9"
       },
+      "crest": "liverpool",
       "home": {
         "shirt": "#c8102e",
         "sleeves": "#c8102e",
@@ -1193,6 +1198,7 @@
         "fg": "#ffffff",
         "border": "#063672"
       },
+      "crest": "arsenal",
       "home": {
         "shirt": "#ef0107",
         "sleeves": "#ffffff",
@@ -1429,6 +1435,7 @@
         "fg": "#ffffff",
         "border": "#0066b2"
       },
+      "crest": "bayern",
       "home": {
         "shirt": "#dc052d",
         "sleeves": "#dc052d",
@@ -1665,6 +1672,7 @@
         "fg": "#000000",
         "border": "#000000"
       },
+      "crest": "dortmund",
       "home": {
         "shirt": "#fde100",
         "sleeves": "#fde100",
@@ -1901,6 +1909,7 @@
         "fg": "#ffffff",
         "border": "#111111"
       },
+      "crest": "inter",
       "home": {
         "shirt": "#0068a8",
         "sleeves": "#0068a8",
@@ -2137,6 +2146,7 @@
         "fg": "#ffffff",
         "border": "#111111"
       },
+      "crest": "milan",
       "home": {
         "shirt": "#e3070a",
         "sleeves": "#e3070a",
@@ -2373,6 +2383,7 @@
         "fg": "#ffffff",
         "border": "#ffffff"
       },
+      "crest": "juventus",
       "home": {
         "shirt": "#f5f5f5",
         "sleeves": "#f5f5f5",
@@ -2609,6 +2620,7 @@
         "fg": "#ffffff",
         "border": "#272e61"
       },
+      "crest": "atletico",
       "home": {
         "shirt": "#cb3524",
         "sleeves": "#cb3524",

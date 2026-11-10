@@ -39,6 +39,8 @@ export interface TeamData {
   city: string;
   formation: FormationName;
   emblem: Emblem;
+  /** Имя файла эмблемы в public/crests/ (без .png). */
+  crest?: string;
   home: Kit;
   away: Kit;
   gk: Kit;

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { HALF_L, HALF_W } from '../game/constants';
 import type { Match } from '../game/Match';
 import type { Player } from '../game/Player';
-import { colorDistance, emblemHTML, esc } from './emblem';
+import { colorDistance, crestHTML, esc } from './emblem';
 import { SHOW_TOUCH } from '../game/quality';
 
 export interface HUDCallbacks {
@@ -64,9 +64,9 @@ export class HUD {
     this.el.className = 'hud';
     this.el.innerHTML = `
       <div class="scoreboard">
-        <div class="sb-team">${emblemHTML(h.data.emblem, 30)}<span>${esc(h.data.short)}</span><i style="background:${this.colors[0]}"></i></div>
+        <div class="sb-team">${crestHTML(h.data, 30)}<span>${esc(h.data.short)}</span><i style="background:${this.colors[0]}"></i></div>
         <div class="sb-score">0 - 0</div>
-        <div class="sb-team"><i style="background:${this.colors[1]}"></i><span>${esc(a.data.short)}</span>${emblemHTML(a.data.emblem, 30)}</div>
+        <div class="sb-team"><i style="background:${this.colors[1]}"></i><span>${esc(a.data.short)}</span>${crestHTML(a.data, 30)}</div>
         <div class="sb-time">00:00</div>
       </div>
       <div class="ptag"><div class="ptag-name"></div><div class="ptag-arrow"></div><div class="power"><div></div></div></div>
@@ -106,7 +106,7 @@ export class HUD {
   showGoal(team: number, scorer: string, own: boolean, minute: number) {
     const t = this.match.teams[team];
     this.goalEl.querySelector('.goal-sub')!.innerHTML =
-      `${emblemHTML(t.data.emblem, 40)}<span>${esc(scorer)}${own ? ' (автогол)' : ''} · ${minute}'</span>`;
+      `${crestHTML(t.data, 40)}<span>${esc(scorer)}${own ? ' (автогол)' : ''} · ${minute}'</span>`;
     this.goalEl.classList.remove('show');
     void this.goalEl.offsetWidth;
     this.goalEl.classList.add('show');

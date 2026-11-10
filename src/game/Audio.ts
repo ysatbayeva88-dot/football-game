@@ -13,6 +13,12 @@ export class GameAudio {
   private noise: AudioBuffer | null = null;
   private brown: AudioBuffer | null = null;
   volume = 0.8;
+  private musicGain: GainNode | null = null;
+  private musicTimer = 0;
+  private musicStep = 0;
+  private musicNext = 0;
+  musicVolume = readVol('uf26-music', 0.5);
+  sfxVolume = readVol('uf26-sfx', 0.8);
 
   ensure() {
     if (!this.ctx) {
@@ -20,7 +26,7 @@ export class GameAudio {
       if (!AC) return;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.volume;
+      this.master.gain.value = this.sfxVolume;
       const comp = this.ctx.createDynamicsCompressor();
       this.master.connect(comp);
       comp.connect(this.ctx.destination);
@@ -216,8 +222,166 @@ export class GameAudio {
     n.start(t0); n.stop(t0 + 6.1);
   }
 
-  setVolume(v: number) {
-    this.volume = v;
+  setVolume(v: number) { this.setSfxVolume(v); }
+
+  setSfxVolume(v: number) {
+    this.sfxVolume = v;
+    writeVol('uf26-sfx', v);
     if (this.ctx) this.master.gain.value = v;
   }
+
+  setMusicVolume(v: number) {
+    this.musicVolume = v;
+    writeVol('uf26-music', v);
+    if (this.musicGain && this.ctx) this.musicGain.gain.setTargetAtTime(v * 0.32, this.ctx.currentTime, 0.2);
+  }
+
+  /** Короткий «клик» интерфейса. */
+  click() {
+    this.ensure();
+    if (!this.ctx) return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(880, t0);
+    o.frequency.exponentialRampToValueAtTime(1500, t0 + 0.05);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.16, t0 + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.11);
+    o.connect(g).connect(this.master);
+    o.start(t0); o.stop(t0 + 0.12);
+  }
+
+  /** Тихий звук наведения. */
+  hover() {
+    if (!this.ctx || this.ctx.state !== 'running') return;
+    const ctx = this.ctx, t0 = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = 1240;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.035, t0 + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.06);
+    o.connect(g).connect(this.master);
+    o.start(t0); o.stop(t0 + 0.07);
+  }
+
+  /** Фоновая музыка меню: генеративный электронный трек (пэды, бас, ударные), 100 BPM. */
+  startMusic() {
+    this.ensure();
+    if (!this.ctx || this.musicGain) return;
+    const ctx = this.ctx;
+    this.musicGain = ctx.createGain();
+    this.musicGain.gain.value = 0;
+    this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.32, ctx.currentTime, 1.2);
+    const comp = ctx.createDynamicsCompressor();
+    this.musicGain.connect(comp).connect(ctx.destination);
+    this.musicStep = 0;
+    this.musicNext = ctx.currentTime + 0.1;
+    this.musicTimer = window.setInterval(() => this.scheduleMusic(), 50);
+  }
+
+  stopMusic() {
+    if (!this.musicGain || !this.ctx) return;
+    clearInterval(this.musicTimer);
+    const g = this.musicGain;
+    g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
+    setTimeout(() => g.disconnect(), 1500);
+    this.musicGain = null;
+  }
+
+  private scheduleMusic() {
+    const ctx = this.ctx!, out = this.musicGain;
+    if (!out) return;
+    const sixteenth = 60 / 100 / 4;
+    // Am – F – C – G
+    const chords = [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]];
+    const hz = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
+    while (this.musicNext < ctx.currentTime + 0.25) {
+      const st = this.musicStep, t = this.musicNext;
+      const bar = Math.floor(st / 16) % 4, beat = st % 16;
+      const chord = chords[bar];
+      if (beat === 0) {
+        // пэд на такт
+        for (const n of chord) {
+          for (const det of [-6, 6]) {
+            const o = ctx.createOscillator();
+            o.type = 'sawtooth';
+            o.frequency.value = hz(n);
+            o.detune.value = det;
+            const f = ctx.createBiquadFilter();
+            f.type = 'lowpass'; f.frequency.value = 900; f.Q.value = 0.6;
+            const g = ctx.createGain();
+            const len = sixteenth * 16;
+            g.gain.setValueAtTime(0.0001, t);
+            g.gain.exponentialRampToValueAtTime(0.035, t + 0.5);
+            g.gain.setValueAtTime(0.035, t + len - 0.4);
+            g.gain.exponentialRampToValueAtTime(0.0001, t + len + 0.3);
+            o.connect(f).connect(g).connect(out);
+            o.start(t); o.stop(t + len + 0.35);
+          }
+        }
+      }
+      // бас: восьмые
+      if (beat % 2 === 0) {
+        const o = ctx.createOscillator();
+        o.type = 'square';
+        o.frequency.value = hz(chord[0] - 24 + (beat === 6 || beat === 14 ? 12 : 0));
+        const f = ctx.createBiquadFilter();
+        f.type = 'lowpass'; f.frequency.value = 420;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.12, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + sixteenth * 1.8);
+        o.connect(f).connect(g).connect(out);
+        o.start(t); o.stop(t + sixteenth * 2);
+      }
+      // бочка на четверти
+      if (beat % 4 === 0) {
+        const o = ctx.createOscillator();
+        o.frequency.setValueAtTime(140, t);
+        o.frequency.exponentialRampToValueAtTime(45, t + 0.12);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.5, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+        o.connect(g).connect(out);
+        o.start(t); o.stop(t + 0.2);
+      }
+      // хэт и клэп
+      if (beat % 2 === 1 || beat === 4 || beat === 12) {
+        const n = ctx.createBufferSource();
+        n.buffer = this.noise!;
+        const f = ctx.createBiquadFilter();
+        const clap = beat === 4 || beat === 12;
+        f.type = clap ? 'bandpass' : 'highpass';
+        f.frequency.value = clap ? 1600 : 7000;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(clap ? 0.22 : 0.05, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + (clap ? 0.12 : 0.04));
+        n.connect(f).connect(g).connect(out);
+        n.start(t, Math.random() * 3); n.stop(t + 0.13);
+      }
+      // арпеджио во второй половине цикла
+      if (Math.floor(st / 64) % 2 === 1 && beat % 2 === 0) {
+        const o = ctx.createOscillator();
+        o.type = 'triangle';
+        o.frequency.value = hz(chord[(beat / 2) % 3] + 12);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.04, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + sixteenth * 1.5);
+        o.connect(g).connect(out);
+        o.start(t); o.stop(t + sixteenth * 1.6);
+      }
+      this.musicStep++;
+      this.musicNext += sixteenth;
+    }
+  }
+}
+
+function readVol(k: string, d: number) {
+  try { const v = localStorage.getItem(k); return v === null ? d : Math.max(0, Math.min(1, +v)); } catch { return d; }
+}
+function writeVol(k: string, v: number) {
+  try { localStorage.setItem(k, String(v)); } catch { /* приватный режим */ }
 }

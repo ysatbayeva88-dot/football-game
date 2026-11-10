@@ -5,6 +5,7 @@ import { GameAudio } from './game/Audio';
 import { Game } from './game/Game';
 import type { MatchConfig, TeamData } from './game/types';
 import { Menu } from './ui/Menu';
+import { MenuScene } from './ui/MenuScene';
 import { IS_MOBILE, IS_TOUCH, SHOW_TOUCH } from './game/quality';
 
 const teams = (teamsJson as unknown as { teams: TeamData[] }).teams;
@@ -28,17 +29,55 @@ canvasWrap.appendChild(renderer.domElement);
 
 const audio = new GameAudio();
 let game: Game | null = null;
+let menuScene: MenuScene | null = null;
 
 const menu = new Menu(app, teams, {
-  onClick: () => audio.ensure(),
+  onClick: () => { audio.click(); audio.startMusic(); },
+  onHover: () => audio.hover(),
   onStart: cfg => startMatch(cfg),
+  onPreview: (team, kit, showcase) => {
+    if (!menuScene) return;
+    menuScene.setTeam(team, kit);
+    menuScene.setMode(showcase ? 'showcase' : 'orbit');
+  },
+  onGraphics: () => { openMenuScene(true); },
+  onMusic: v => audio.setMusicVolume(v),
+  onSfx: v => audio.setSfxVolume(v),
+  getVolumes: () => ({ music: audio.musicVolume, sfx: audio.sfxVolume }),
 });
+
+/** 3D-фон меню (ночной стадион с разминкой). */
+function openMenuScene(rebuild = false) {
+  if (menuScene && !rebuild) return;
+  menuScene?.dispose();
+  menuScene = null;
+  try {
+    menuScene = new MenuScene(renderer, menu.user, menu.graphicsLevel);
+    menuScene.start();
+    canvasWrap.style.visibility = 'visible';
+  } catch (e) {
+    console.error('Не удалось построить 3D-фон меню', e);
+  }
+}
+
+function closeMenuScene() {
+  menuScene?.dispose();
+  menuScene = null;
+}
+
+openMenuScene();
 menu.showMain();
+// музыка запускается после первого взаимодействия (так требуют браузеры)
+const firstGesture = () => { audio.startMusic(); window.removeEventListener('pointerdown', firstGesture); window.removeEventListener('keydown', firstGesture); };
+window.addEventListener('pointerdown', firstGesture);
+window.addEventListener('keydown', firstGesture);
 (window as unknown as { __menu: Menu }).__menu = menu;
 
 async function startMatch(cfg: MatchConfig) {
   audio.ensure();
+  audio.stopMusic();
   menu.showLoading(cfg);
+  closeMenuScene();
   canvasWrap.style.visibility = 'hidden';
   game?.dispose();
   const g = new Game(renderer, hudRoot, cfg, audio, {
@@ -71,7 +110,8 @@ async function startMatch(cfg: MatchConfig) {
 function endGame() {
   game?.dispose();
   game = null;
-  canvasWrap.style.visibility = 'hidden';
+  openMenuScene(true);
+  audio.startMusic();
 }
 
 /** На телефоне: полный экран и фиксация горизонтальной ориентации (если браузер позволяет). */

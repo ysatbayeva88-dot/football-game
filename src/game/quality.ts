@@ -36,7 +36,7 @@ export function defaultGraphics(): GraphicsLevel {
     const v = localStorage.getItem('uf26-gfx');
     if (v === 'low' || v === 'medium' || v === 'high') return v;
   } catch { /* приватный режим */ }
-  return IS_MOBILE ? 'low' : 'high';
+  return IS_MOBILE ? 'medium' : 'high';
 }
 
 export function saveGraphics(g: GraphicsLevel) {

@@ -1,7 +1,9 @@
-import type { Emblem } from '../game/types';
+import type { Emblem, TeamData } from '../game/types';
+
+const BASE = import.meta.env.BASE_URL || '/';
 
 /** Простая эмблема клуба: щит с буквами в клубных цветах (не копия логотипа). */
-export function emblemHTML(e: Emblem, size = 48) {
+export function emblemHTML(e: Emblem, size = 48, crest?: string) {
   const fs = Math.round(size * (e.text.length > 2 ? 0.3 : e.text.length > 1 ? 0.38 : 0.5));
   return `<div class="emblem" style="width:${size}px;height:${Math.round(size * 1.15)}px">
     <svg viewBox="0 0 100 115" width="${size}" height="${Math.round(size * 1.15)}">
@@ -9,7 +11,16 @@ export function emblemHTML(e: Emblem, size = 48) {
       <path d="M50 14 L84 23 L82 60 Q79 86 50 100 Q21 86 18 60 L16 23 Z" fill="none" stroke="${e.fg}" stroke-opacity="0.35" stroke-width="2"/>
     </svg>
     <span style="color:${e.fg};font-size:${fs}px">${e.text}</span>
+    ${crest ? `<img class="crest" alt="" src="${BASE}crests/${encodeURIComponent(crest)}.png" onload="this.parentNode.classList.add('has-crest')" onerror="this.remove()">` : ''}
   </div>`;
+}
+
+/**
+ * Эмблема клуба: если в public/crests/ лежит файл <crest>.png — показывается он,
+ * иначе — сгенерированный щит с буквами.
+ */
+export function crestHTML(t: Pick<TeamData, 'emblem' | 'crest'>, size = 48) {
+  return emblemHTML(t.emblem, size, t.crest);
 }
 
 export function esc(s: string) {
