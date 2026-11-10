@@ -5,10 +5,11 @@ import { GameAudio } from './game/Audio';
 import { Game } from './game/Game';
 import type { MatchConfig, TeamData } from './game/types';
 import { Menu } from './ui/Menu';
-import { LOW_QUALITY } from './game/quality';
+import { IS_TOUCH, LOW_QUALITY, SHOW_TOUCH } from './game/quality';
 
 const teams = (teamsJson as unknown as { teams: TeamData[] }).teams;
 
+if (SHOW_TOUCH) document.documentElement.classList.add('touch-ui');
 const app = document.getElementById('app')!;
 const canvasWrap = document.createElement('div');
 canvasWrap.className = 'game-canvas';
@@ -60,6 +61,7 @@ async function startMatch(cfg: MatchConfig) {
   }
   await menu.waitStart();
   if (game !== g) return;
+  if (IS_TOUCH) enterFullscreenLandscape();
   menu.hide();
   canvasWrap.style.visibility = 'visible';
   g.start();
@@ -70,4 +72,16 @@ function endGame() {
   game?.dispose();
   game = null;
   canvasWrap.style.visibility = 'hidden';
+}
+
+/** На телефоне: полный экран и фиксация горизонтальной ориентации (если браузер позволяет). */
+function enterFullscreenLandscape() {
+  const el = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => void };
+  try {
+    const req = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : (el.webkitRequestFullscreen?.(), Promise.resolve());
+    Promise.resolve(req).then(() => {
+      const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+      return o?.lock?.('landscape');
+    }).catch(() => { /* не поддерживается — остаётся подсказка «Поверни телефон» */ });
+  } catch { /* игнорируем */ }
 }

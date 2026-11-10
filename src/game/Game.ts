@@ -9,6 +9,8 @@ import { Replay } from './Replay';
 import { Stadium } from './Stadium';
 import type { MatchConfig, MatchResult } from './types';
 import { HUD } from '../ui/HUD';
+import { TouchControls } from '../ui/TouchControls';
+import { SHOW_TOUCH } from './quality';
 
 export interface GameCallbacks {
   onEnd(result: MatchResult): void;
@@ -35,6 +37,7 @@ export class Game {
   private endTimer = -1;
   private marker!: THREE.Mesh;
   private ballFocus = new THREE.Vector3();
+  private touch: TouchControls | null = null;
   private onResize = () => this.resize();
 
   constructor(private renderer: THREE.WebGLRenderer, private hudRoot: HTMLElement, private cfg: MatchConfig, private audio: GameAudio, private cb: GameCallbacks) {
@@ -68,6 +71,10 @@ export class Game {
         if (r) this.hud.showMessage('ЗАМЕНА', `${r.incoming.name} ↔ ${r.outgoing.name}`);
       },
     });
+    if (SHOW_TOUCH) {
+      this.touch = new TouchControls(this.hudRoot);
+      this.input.touch = this.touch;
+    }
     m.on(e => this.onEvent(e));
     m.start();
     this.poseAll();
@@ -83,6 +90,7 @@ export class Game {
   start() {
     this.audio.startAmbience(this.cfg.stadium === 'rain');
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('orientationchange', this.onResize);
     this.resize();
     this.last = performance.now();
     this.raf = requestAnimationFrame(this.frame);
@@ -98,6 +106,7 @@ export class Game {
   private setPaused(p: boolean) {
     this.paused = p;
     this.hud.showPause(p);
+    this.touch?.setVisible(!p);
   }
 
   private quit() {
@@ -232,7 +241,9 @@ export class Game {
   dispose() {
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('orientationchange', this.onResize);
     this.input.dispose();
+    this.touch?.dispose();
     this.audio.stopAmbience();
     this.hud?.dispose();
     this.stadium?.dispose();

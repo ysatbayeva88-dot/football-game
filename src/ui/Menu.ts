@@ -3,6 +3,7 @@ import { teamOvr } from '../game/Team';
 import type { FormationName, Kit, MatchConfig, MatchResult, StadiumId, TeamData } from '../game/types';
 import { colorDistance, emblemHTML, esc } from './emblem';
 import { CONTROLS_HTML } from './HUD';
+import { SHOW_TOUCH } from '../game/quality';
 
 export interface MenuCallbacks {
   onStart(cfg: MatchConfig): void;
@@ -69,7 +70,7 @@ export class Menu {
       </div>
       <div class="main-tiles">
         <button class="tile big" data-a="quick"><div class="tile-ico">⚽</div><div><b>БЫСТРЫЙ МАТЧ</b><span>Выберите клубы и играйте 11×11</span></div></button>
-        <button class="tile" data-a="controls"><div class="tile-ico">🎮</div><div><b>УПРАВЛЕНИЕ</b><span>Клавиатура и геймпад</span></div></button>
+        <button class="tile" data-a="controls"><div class="tile-ico">🎮</div><div><b>УПРАВЛЕНИЕ</b><span>${SHOW_TOUCH ? 'Сенсор, клавиатура, геймпад' : 'Клавиатура и геймпад'}</span></div></button>
       </div>
       <div class="footer-note">12 клубов · 3 стадиона · 3 уровня сложности · составы в src/data/teams.json</div>`, 'main');
     this.bind('[data-a="quick"]', () => this.showTeams());
@@ -238,7 +239,7 @@ export class Menu {
   }
 
   waitStart(): Promise<void> {
-    if (this.loadingLabel) this.loadingLabel.innerHTML = '<span class="blink">Нажмите любую клавишу или кликните, чтобы начать</span>';
+    if (this.loadingLabel) this.loadingLabel.innerHTML = `<span class="blink">${SHOW_TOUCH ? 'Коснитесь экрана, чтобы начать' : 'Нажмите любую клавишу или кликните, чтобы начать'}</span>`;
     return new Promise(res => {
       const go = () => {
         window.removeEventListener('keydown', go);

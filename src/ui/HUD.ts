@@ -3,6 +3,7 @@ import { HALF_L, HALF_W } from '../game/constants';
 import type { Match } from '../game/Match';
 import type { Player } from '../game/Player';
 import { colorDistance, emblemHTML, esc } from './emblem';
+import { SHOW_TOUCH } from '../game/quality';
 
 export interface HUDCallbacks {
   onResume(): void;
@@ -23,7 +24,15 @@ export const CONTROLS_HTML = `
   <tr><td>Пауза</td><td>Esc / P</td><td>Start</td></tr>
   <tr><td>Пропустить повтор</td><td>Enter / Пробел</td><td>A</td></tr>
 </table>
-<p class="hint-small">Направление при ударе задаёт угол: W/S — ближний/дальний угол. На стандартах стрелками целитесь, E — пас, Q — навес, Пробел — удар.</p>`;
+<p class="hint-small">Направление при ударе задаёт угол: W/S — ближний/дальний угол. На стандартах стрелками целитесь, E — пас, Q — навес, Пробел — удар.</p>
+<table class="controls touch-table">
+  <tr><th>На телефоне</th><th>Сенсорное управление</th></tr>
+  <tr><td>Бег</td><td>Джойстик слева (появляется под пальцем)</td></tr>
+  <tr><td>Удар</td><td>«Удар» — держите дольше для силы</td></tr>
+  <tr><td>Пас / отбор, навес, подкат</td><td>«Пас», «Навес», «Подкат»</td></tr>
+  <tr><td>Спринт, смена игрока</td><td>«Спринт» (держать), «Смена»</td></tr>
+  <tr><td>Пауза</td><td>Кнопка ❚❚ справа вверху</td></tr>
+</table>`;
 
 export class HUD {
   el: HTMLElement;
@@ -62,9 +71,9 @@ export class HUD {
       <canvas class="minimap" width="252" height="164"></canvas>
       <div class="msg"></div>
       <div class="goal-overlay"><div class="goal-text">ГОЛ!</div><div class="goal-sub"></div></div>
-      <div class="replay-badge">● ПОВТОР <small>Enter — пропустить</small></div>
+      <div class="replay-badge">● ПОВТОР <small>${SHOW_TOUCH ? 'Пас — пропустить' : 'Enter — пропустить'}</small></div>
       <div class="sp-hint"></div>
-      <div class="start-hint">WASD — бег · Shift — спринт · Пробел — удар · E — пас · Q — навес · F — подкат · Tab — смена · Esc — пауза</div>
+      <div class="start-hint">${SHOW_TOUCH ? 'Джойстик — бег · «Удар»: держите для силы · ❚❚ — пауза' : 'WASD — бег · Shift — спринт · Пробел — удар · E — пас · Q — навес · F — подкат · Tab — смена · Esc — пауза'}</div>
       <div class="pause"></div>`;
     root.appendChild(this.el);
     const q = (s: string) => this.el.querySelector(s) as HTMLElement;
@@ -137,7 +146,15 @@ export class HUD {
         freekick: 'Штрафной: стрелки — прицел, Пробел — удар, E — пас, Q — навес',
         penalty: 'Пенальти: стрелки — угол, держите Пробел — сила удара',
       };
-      this.spHint.textContent = map[sp.type];
+      const touchMap: Record<string, string> = {
+        kickoff: 'Начальный удар: нажмите «Пас»',
+        throw: 'Вбрасывание: джойстик — направление, «Пас» — коротко, «Навес» — далеко',
+        corner: 'Угловой: джойстик — направление, «Навес» — подача, «Пас» — розыгрыш',
+        goalkick: 'Удар от ворот: «Пас» — коротко, «Навес» — длинный',
+        freekick: 'Штрафной: джойстик — прицел, «Удар», «Пас» или «Навес»',
+        penalty: 'Пенальти: джойстик — угол, держите «Удар» — сила',
+      };
+      this.spHint.textContent = (SHOW_TOUCH ? touchMap : map)[sp.type];
       this.spHint.style.display = 'block';
     } else this.spHint.style.display = 'none';
 

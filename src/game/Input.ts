@@ -1,3 +1,5 @@
+import type { TouchControls } from '../ui/TouchControls';
+
 export interface InputFrame {
   mx: number; // вправо по экрану
   my: number; // вверх по экрану
@@ -22,6 +24,7 @@ export class Input {
   private padPrev: boolean[] = [];
   private padShootHeld = false;
   enabled = true;
+  touch: TouchControls | null = null;
   usingPad = false;
 
   private onDown = (e: KeyboardEvent) => {
@@ -98,6 +101,22 @@ export class Input {
       for (let i = 0; i < pad.buttons.length; i++) { if (edge(i)) { f.any = true; this.usingPad = true; } }
       this.padPrev = pad.buttons.map((_, i) => b(i));
       break;
+    }
+
+    // сенсорное управление
+    if (this.touch) {
+      const t = this.touch.poll();
+      if (Math.hypot(t.mx, t.my) > 0.01) { f.mx = t.mx; f.my = t.my; }
+      f.sprint ||= t.sprint;
+      f.shootHeld ||= t.shootHeld;
+      f.shootReleased ||= t.shootReleased;
+      f.pass ||= t.pass;
+      f.lob ||= t.lob;
+      f.tackle ||= t.tackle;
+      f.switchP ||= t.switchP;
+      f.pause ||= t.pause;
+      f.skip ||= t.pass || t.shootReleased || t.lob;
+      f.any ||= t.any;
     }
 
     this.pressed.clear();
