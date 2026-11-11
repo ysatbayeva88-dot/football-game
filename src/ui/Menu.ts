@@ -1,6 +1,6 @@
-import { ASSISTS, DIFFICULTIES, FORMATIONS, STADIUMS } from '../game/constants';
+import { AI_ASSISTS, ASSISTS, DIFFICULTIES, FORMATIONS, STADIUMS } from '../game/constants';
 import { teamOvr } from '../game/Team';
-import type { AssistLevel, FormationName, GraphicsLevel, Kit, MatchConfig, MatchResult, PlayerData, StadiumId, TeamData } from '../game/types';
+import type { AiAssistLevel, AssistLevel, FormationName, GraphicsLevel, Kit, MatchConfig, MatchResult, PlayerData, StadiumId, TeamData } from '../game/types';
 import { colorDistance, crestHTML, esc } from './emblem';
 import { CONTROLS_HTML } from './HUD';
 import { SHOW_TOUCH, defaultGraphics, saveGraphics } from '../game/quality';
@@ -65,6 +65,7 @@ export class Menu {
   private formation: FormationName = '4-3-3';
   private assist: AssistLevel = (lsGet('uf26-assist') as AssistLevel) || 'full';
   private graphics: GraphicsLevel = defaultGraphics();
+  private aiAssist: AiAssistLevel = (lsGet('uf26-aiassist') as AiAssistLevel) || 'full';
   private lineup: { starters: PlayerData[]; subs: PlayerData[] } | null = null;
   private sel: { where: 's' | 'b'; i: number } | null = null;
   private loadingBar: HTMLElement | null = null;
@@ -175,6 +176,9 @@ export class Menu {
         <section class="panel"><h3>Ассист управления</h3>
           <div class="opts">${(Object.keys(ASSISTS) as AssistLevel[]).map(a => opt('assist', a, ASSISTS[a].name, this.assist === a, { full: 'Пасы и удары с наведением', semi: 'Частичная помощь', manual: 'Всё вручную' }[a])).join('')}</div>
         </section>
+        <section class="panel"><h3>Ассист ИИ</h3>
+          <div class="opts">${(Object.keys(AI_ASSISTS) as AiAssistLevel[]).map(a => opt('aiassist', a, AI_ASSISTS[a].name, this.aiAssist === a, { full: 'Сам принимает пасы, бежит к мячу, сопровождает и отбирает', semi: 'Приём паса и подбор мяча, помощь вблизи', off: 'Без помощи ИИ' }[a])).join('')}</div>
+        </section>
         <section class="panel"><h3>Звук</h3>
           <label class="slider"><span>Музыка в меню</span><input type="range" min="0" max="100" value="${Math.round(vol.music * 100)}" data-s="music"><b>${Math.round(vol.music * 100)}</b></label>
           <label class="slider"><span>Эффекты и трибуны</span><input type="range" min="0" max="100" value="${Math.round(vol.sfx * 100)}" data-s="sfx"><b>${Math.round(vol.sfx * 100)}</b></label>
@@ -185,6 +189,7 @@ export class Menu {
       const g = el.dataset.g!, v = el.dataset.v!;
       if (g === 'gfx') { this.graphics = v as GraphicsLevel; saveGraphics(this.graphics); this.cb.onGraphics(this.graphics); }
       if (g === 'assist') { this.assist = v as AssistLevel; lsSet('uf26-assist', v); }
+      if (g === 'aiassist') { this.aiAssist = v as AiAssistLevel; lsSet('uf26-aiassist', v); }
       this.showSettings();
     });
     this.el.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(inp => inp.addEventListener('input', () => {
@@ -306,8 +311,10 @@ export class Menu {
         </section>
         <section class="panel"><h3>Длительность тайма</h3>
           <div class="opts">${[2, 4, 6].map(n => opt('half', String(n), `${n} мин`, this.halfMinutes === n)).join('')}</div>
-          <h3>Ассист</h3>
+          <h3>Ассист управления</h3>
           <div class="opts">${(Object.keys(ASSISTS) as AssistLevel[]).map(a => opt('assist', a, ASSISTS[a].name, this.assist === a)).join('')}</div>
+          <h3>Ассист ИИ</h3>
+          <div class="opts">${(Object.keys(AI_ASSISTS) as AiAssistLevel[]).map(a => opt('aiassist', a, AI_ASSISTS[a].name, this.aiAssist === a)).join('')}</div>
         </section>
       </div>
       <div class="row-btns bottom">
@@ -322,6 +329,7 @@ export class Menu {
       if (g === 'diff') this.difficulty = +v as 0 | 1 | 2;
       if (g === 'half') this.halfMinutes = +v as 2 | 4 | 6;
       if (g === 'assist') { this.assist = v as AssistLevel; lsSet('uf26-assist', v); }
+      if (g === 'aiassist') { this.aiAssist = v as AiAssistLevel; lsSet('uf26-aiassist', v); }
       this.showMatchSettings();
     });
     this.bind('[data-a="back"]', () => this.showTeams());
@@ -394,7 +402,7 @@ export class Menu {
       homeKit: this.homeKit, awayKit: this.awayKit,
       stadium: this.stadium, difficulty: this.difficulty,
       halfMinutes: this.halfMinutes, formation: this.formation,
-      assist: this.assist, graphics: this.graphics,
+      assist: this.assist, aiAssist: this.aiAssist, graphics: this.graphics,
     };
   }
 
@@ -415,7 +423,7 @@ export class Menu {
         ${lineup(cfg.home, cfg.formation, cfg.home[cfg.homeKit])}
         <div class="lo-mid">
           <div class="lo-vs">VS</div>
-          <div class="lo-info"><b>${st.name}</b><span>${st.desc}</span><span>Сложность: ${DIFFICULTIES[cfg.difficulty].name}</span><span>Тайм: ${cfg.halfMinutes} мин · Ассист: ${ASSISTS[cfg.assist].name}</span></div>
+          <div class="lo-info"><b>${st.name}</b><span>${st.desc}</span><span>Сложность: ${DIFFICULTIES[cfg.difficulty].name}</span><span>Тайм: ${cfg.halfMinutes} мин · Ассист: ${ASSISTS[cfg.assist].name} · ИИ: ${AI_ASSISTS[cfg.aiAssist ?? 'full'].name}</span></div>
           <div class="lo-bar"><i></i></div>
           <div class="lo-label">Загрузка…</div>
         </div>

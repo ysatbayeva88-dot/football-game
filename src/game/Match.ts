@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { Ball, ROLL_K } from './Ball';
 import {
-  ALLY_AI, ASSISTS, BALL_R, CIRCLE_R, DIFFICULTIES, GOAL_HW, GRAVITY, HALF_L, HALF_W, KICKOFF_PARTNER, PEN_D, PEN_HW, PEN_SPOT,
+  AI_ASSISTS, ALLY_AI, ASSISTS, BALL_R, CIRCLE_R, DIFFICULTIES, GOAL_HW, GRAVITY, HALF_L, HALF_W, KICKOFF_PARTNER, PEN_D, PEN_HW, PEN_SPOT,
   angleLerp, clamp, gauss, hashStr, rand,
 } from './constants';
-import { aiCarrier, aiGK, aiHold, aiOffBall, bestPass, computeContext, formationTarget, inOppBox, inOwnBox, laneOpen, newCtx } from './AI';
+import { aiCarrier, aiGK, aiHold, aiOffBall, bestPass, computeContext, formationTarget, inOppBox, inOwnBox, interceptTime, laneOpen, newCtx } from './AI';
 import type { TeamCtx } from './AI';
 import type { InputFrame } from './Input';
 import type { Player } from './Player';
@@ -78,6 +78,14 @@ export class Match {
   /** ИИ управляет и командой игрока (для тестов/демо). */
   autoplay = false;
   assist: (typeof ASSISTS)[keyof typeof ASSISTS];
+  aiAssist: (typeof AI_ASSISTS)[keyof typeof AI_ASSISTS];
+  /** Адресат паса, которого ИИ сейчас ведёт к мячу (ввод игрока игнорируется). */
+  autoRecv: Player | null = null;
+  private recvOverrideT = 0;
+  private recvReleased: Player | null = null;
+  private pokeT = 0;
+  /** Сейчас игроком управляет ИИ-ассист (для HUD/тестов). */
+  aiDriving = false;
   /** Партнёр, которому уйдёт пас при нажатии (для индикатора). */
   passPreview: Player | null = null;
   /** Игрок зажал «Прессинг» — партнёр тоже идёт в отбор. */
@@ -89,6 +97,7 @@ export class Match {
   constructor(public cfg: MatchConfig) {
     this.difficulty = cfg.difficulty;
     this.assist = ASSISTS[cfg.assist ?? 'full'];
+    this.aiAssist = AI_ASSISTS[cfg.aiAssist ?? 'full'];
     const home = new Team(0, cfg.home, cfg.homeKit, cfg.formation, 1, true, ALLY_AI);
     const away = new Team(1, cfg.away, cfg.awayKit, cfg.away.formation, -1, false, DIFFICULTIES[cfg.difficulty]);
     home.opp = away; away.opp = home;
@@ -266,14 +275,17 @@ export class Match {
   }
 
   private pickDefender(team: Team, exclude: Player | null) {
-    // защитник, ближайший к линии «мяч — свои ворота»
-    const ref = this.ball.owner ? this.ball.owner.pos : this.ball.pos;
-    const gx = -team.dir * HALF_L;
+    // ближайший к мячу, кто успевает на перехват: со стороны своих ворот — приоритет
+    const ball = this.ball;
+    const ref = ball.owner ? ball.owner.pos : ball.pos;
     let best: Player | null = null, bs = 1e9;
     for (const p of team.players) {
       if (p.isGK || p === exclude || p.busy) continue;
-      const line = segDist2D(ref, _w.set(gx, 0, 0), p.pos);
-      const sc = line + p.dist2D(ref) * 0.45;
+      let sc: number;
+      if (ball.owner) {
+        const goalSide = (p.pos.x - ref.x) * -team.dir > -0.5;
+        sc = p.dist2D(ref) + (goalSide ? -1.5 : 3);
+      } else sc = interceptTime(this, p) * 6;
       if (sc < bs) { bs = sc; best = p; }
     }
     return best;
@@ -284,30 +296,39 @@ export class Match {
     const ball = this.ball;
     const owner = ball.owner;
     const defending = !!owner && owner.team !== team;
+    const AI = this.aiAssist;
+    _v.set(inp.mx, 0, -inp.my);
+    const mag = Math.min(1, _v.length());
+    const stick = mag > 0.2;
+
+    // ── автоприём паса: адресат под управлением ИИ до касания мяча
+    const intended = ball.intended && ball.intended.team === team && !ball.intended.isGK && !owner ? ball.intended : null;
+    if (intended && AI.autoReceive && this.recvReleased !== intended) {
+      if (this.autoRecv !== intended) { this.autoRecv = intended; this.recvOverrideT = 0; }
+    } else {
+      this.autoRecv = null;
+      if (!intended) this.recvReleased = null;
+    }
+
+    // ── выбор управляемого игрока
     if (owner && owner.team === team && !owner.isGK) {
       this.controlled = owner;
+    } else if (this.autoRecv) {
+      if (this.controlled !== this.autoRecv) { this.controlled = this.autoRecv; this.lastSwitch = this.time; }
     } else if (inp.switchP) {
       const cand = defending ? this.pickDefender(team, this.controlled)
         : team.players.filter(p => !p.isGK && p !== this.controlled).sort((a, b) => a.dist2D(ball.pos) - b.dist2D(ball.pos))[0];
       if (cand) { this.controlled = cand; this.lastSwitch = this.time; }
-    } else if (this.controlled.isGK || this.time - this.lastSwitch > 0.6) {
+    } else if (this.controlled.isGK || this.time - this.lastSwitch > 0.5) {
       let cand: Player | null = null;
-      const c0 = this.ctx[0].chaser;
-      if (ball.intended && ball.intended.team === team && !ball.intended.isGK) cand = ball.intended;
-      else if (defending) cand = this.pickDefender(team, null);
-      else if (!owner && c0 && !c0.isGK) cand = c0;
-      else {
-        let bd = 1e9;
-        for (const p of team.players) {
-          if (p.isGK) continue;
-          const d = p.dist2D(ball.pos);
-          if (d < bd) { bd = d; cand = p; }
-        }
-      }
-      if (cand && cand !== this.controlled && !this.controlled.busy) {
+      if (intended) cand = intended;
+      else if (defending || !owner) cand = this.pickDefender(team, null);
+      if (cand && cand !== this.controlled && !this.controlled.busy && this.controlled.tackleT <= 0) {
         const ref = owner ? owner.pos : ball.pos;
-        const busyHere = this.controlled.tackleT > 0;
-        if (!busyHere && (this.controlled.isGK || cand === ball.intended || cand.dist2D(ref) + 2.5 < this.controlled.dist2D(ref))) {
+        const better = !owner
+          ? interceptTime(this, cand) + 0.35 < interceptTime(this, this.controlled)
+          : cand.dist2D(ref) + 2.5 < this.controlled.dist2D(ref);
+        if (this.controlled.isGK || cand === intended || better) {
           this.controlled = cand;
           this.lastSwitch = this.time;
         }
@@ -315,19 +336,57 @@ export class Match {
     }
 
     const c = this.controlled;
-    const A = this.assist;
     c.lookAt = ball.pos;
-    _v.set(inp.mx, 0, -inp.my);
-    const mag = Math.min(1, _v.length());
-    this.humanPress = defending && inp.press;
+    this.humanPress = defending && (inp.press || AI.secondPress);
+    this.aiDriving = false;
     if (!c.busy && c.tackleT <= 0) {
       const spd = inp.sprint ? c.sprintSpeed() : c.jogSpeed();
-      if (mag > 0.05) c.desired.copy(_v).normalize().multiplyScalar(spd * mag);
-      else if (ball.intended === c && A.autoReceive) {
-        // сам бежит навстречу мячу и останавливается в точке приёма
-        this.steer(c, this.ctx[0].chasePoint, true, 0.1);
-      } else c.desired.set(0, 0, 0);
-      if (defending && inp.contain && owner) this.contain(c, owner);
+      const manual = () => {
+        if (mag > 0.05) c.desired.copy(_v).normalize().multiplyScalar(spd * mag);
+        else c.desired.set(0, 0, 0);
+      };
+      if (this.autoRecv === c) {
+        // ИИ ведёт к точке встречи; управление вернётся после касания
+        // или если стик долго (>0.3 с) сильно отклонён в другую сторону
+        const cp = this.ctx[0].chasePoint;
+        _w.subVectors(cp, c.pos).setY(0);
+        const dl = _w.length() || 1;
+        const against = mag > 0.6 && (_v.x * _w.x + _v.z * _w.z) / (dl * mag) < -0.2;
+        this.recvOverrideT = against ? this.recvOverrideT + dt : Math.max(0, this.recvOverrideT - dt);
+        if (this.recvOverrideT > 0.3) { this.recvReleased = c; this.autoRecv = null; manual(); }
+        else { this.steer(c, cp, dl > 2.5, 0.12); this.aiDriving = true; }
+      } else if (!owner && AI.autoChase && !stick && !(ball.intended && ball.intended.team === team)) {
+        // свободный мяч или пас соперника: сам бежит на перехват
+        const t = interceptTime(this, c, _w);
+        if (t < 3) { this.steer(c, _w, true, 0.1); this.aiDriving = true; }
+        else manual();
+      } else if (defending && owner) {
+        const d = c.dist2D(owner.pos);
+        const auto = inp.contain || AI.defend === 'always' || (AI.defend === 'near' && d < 10);
+        if (auto) {
+          if (d > 3.2 && !inp.contain) {
+            // сближение: бежит к точке между соперником и воротами
+            _w.set(-team.dir * HALF_L - owner.pos.x, 0, -owner.pos.z).normalize();
+            const tgt = owner.pos.clone().addScaledVector(owner.vel, 0.35).addScaledVector(_w, 1.4);
+            this.steer(c, tgt, d > 5 || inp.sprint, 0.2);
+          } else this.contain(c, owner);
+          if (stick && !inp.contain) {
+            // джойстик лишь корректирует
+            c.desired.addScaledVector(_v.clone().normalize(), c.jogSpeed() * 0.5 * mag);
+            const l = c.desired.length(), max = c.sprintSpeed();
+            if (l > max) c.desired.multiplyScalar(max / l);
+          }
+          this.aiDriving = !stick;
+          // автовыпад при плотном сопровождении спереди
+          this.pokeT -= dt;
+          if (AI.autoPoke && !stick && d < 1.6 && this.pokeT <= 0 && c.tackleCD <= 0) {
+            this.pokeT = 0.7;
+            const f = owner.forward(_w);
+            const front = (f.x * (c.pos.x - owner.pos.x) + f.z * (c.pos.z - owner.pos.z)) / Math.max(0.1, d) > 0.2;
+            if (front && Math.random() < [0.22, 0.12, 0.07][this.difficulty]) this.tryTackle(c);
+          }
+        } else manual();
+      } else manual();
     }
     const dirHint = mag > 0.2 ? _v.clone().normalize() : null;
     this.passPreview = owner === c && dirHint ? this.chooseReceiver(c, dirHint, false) : null;
@@ -466,7 +525,7 @@ export class Match {
       let tt: number;
       if (!lob && !throwIn) {
         // мяч приходит в ноги: стоящему — точно в него, бегущему — на ход
-        const fast = p.team.isHuman && !this.autoplay && this.cfg.assist === 'full';
+        const fast = (p.team.isHuman && !this.autoplay && this.cfg.assist === 'full') || (!p.team.isHuman && this.difficulty >= 1);
         const vend = fast ? Math.min(16, 11.5 + d * 0.15) : Math.min(13, 8 + d * 0.15);
         const aEff = ball.friction + ROLL_K * (vend + 12) * 0.5;
         let v0 = clamp(Math.sqrt(vend * vend + 2 * aEff * d), 7, 28);
@@ -517,6 +576,7 @@ export class Match {
     ball.kick(vel, p, 0);
     ball.intended = receiver;
     ball.offsidePlayer = offPlayer;
+    this.passSeq++;
     p.kickAnim = 0;
     p.kickType = lob ? 1 : 0;
     p.kickCD = 0.3;
@@ -536,6 +596,8 @@ export class Match {
     const maxD = lob ? 60 : 45;
     const team = p.team;
     const cone = p.team.isHuman ? this.assist.cone : 0.8;
+    const safe = team.isHuman && !this.autoplay && this.cfg.assist === 'full' && (this.cfg.aiAssist ?? 'full') === 'full';
+    const laneMin = safe ? 1.1 : 0.6, oppMin = safe ? 2.0 : 1.4;
     const pass = (maxAng: number, needOpen: boolean) => {
       let best: Player | null = null, bs = -1e9;
       for (const t of team.players) {
@@ -544,7 +606,7 @@ export class Match {
         const d = Math.hypot(vx, vz);
         if (d < 3 || d > maxD) continue;
         const lane = lob ? 3 : laneOpen(team, p.pos, t.pos, 18);
-        if (needOpen && lane < 0.6) continue;
+        if (needOpen && lane < laneMin) continue;
         let score: number;
         if (dir) {
           const ang = Math.acos(clamp((vx * dir.x + vz * dir.z) / d, -1, 1));
@@ -556,7 +618,7 @@ export class Match {
         }
         if (t.isGK) score -= 10;
         const opp = this.nearestOppDist(t);
-        if (needOpen && opp < 1.4) continue;
+        if (needOpen && opp < oppMin) continue;
         score += Math.min(opp, 6) * 0.6;
         if (score > bs) { bs = score; best = t; }
       }
@@ -903,6 +965,7 @@ export class Match {
         return;
       }
       if (d < 0.85 && ball.pos.y < 0.95) {
+        if (this.passSlipsBy(p)) continue;
         if (d < bd) { bd = d; best = p; header = false; }
       } else if (d < 0.9 && ball.pos.y >= 0.95 && ball.pos.y < 2.4 && !p.isGK) {
         if (d < bd) { bd = d; best = p; header = true; }
@@ -923,8 +986,26 @@ export class Match {
     this.setOwner(best);
   }
 
+  private passRoll = new Map<Player, number>();
+  private passSeq = 0;
+  /**
+   * Полный ассист: быстрый пас игрока проходит мимо защитника, оказавшегося у мяча,
+   * с шансом 70% (один бросок на защитника за пас) — как «проникающий» пас в FC.
+   */
+  private passSlipsBy(p: Player) {
+    const ball = this.ball, r = ball.intended;
+    if (!r || r.team === p.team || !r.team.isHuman || this.autoplay) return false;
+    if (this.cfg.assist !== 'full' || (this.cfg.aiAssist ?? 'full') !== 'full' || ball.speed < 11) return false;
+    const seen = this.passRoll.get(p);
+    if (seen === this.passSeq) return true; // уже пропустил этот пас
+    if (seen === -this.passSeq - 1) return false;
+    const slip = Math.random() < 0.7;
+    this.passRoll.set(p, slip ? this.passSeq : -this.passSeq - 1);
+    return slip;
+  }
+
   private magnetFor(p: Player) {
-    if (p.team.isHuman && !this.autoplay) return this.assist.magnet;
+    if (p.team.isHuman && !this.autoplay) return Math.max(this.assist.magnet, this.aiAssist.magnet);
     return p.team.isHuman ? 1.4 : [1.0, 1.25, 1.45][this.difficulty];
   }
 

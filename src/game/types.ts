@@ -50,6 +50,7 @@ export interface TeamData {
 
 export type StadiumId = 'day' | 'night' | 'rain';
 export type AssistLevel = 'full' | 'semi' | 'manual';
+export type AiAssistLevel = 'full' | 'semi' | 'off';
 export type GraphicsLevel = 'low' | 'medium' | 'high';
 
 export interface MatchConfig {
@@ -62,6 +63,8 @@ export interface MatchConfig {
   halfMinutes: 2 | 4 | 6;
   formation: FormationName;
   assist: AssistLevel;
+  /** Ассист ИИ: автоприём паса, автоподбор мяча, помощь в отборе. */
+  aiAssist?: AiAssistLevel;
   graphics: GraphicsLevel;
 }
 

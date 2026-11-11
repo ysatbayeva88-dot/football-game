@@ -260,7 +260,19 @@ export function aiOffBall(m: Match, p: Player, dt: number) {
   const diff = team.ai;
   p.lookAt = ball.pos;
 
-  // реакция (задержка) для бота
+  // перехват: пас соперника проходит рядом — тянется к мячу
+  if (!ball.owner && ball.lastTouch && ball.lastTouch.team !== team) {
+    const R = team.isHuman ? m.aiAssist.intercept * 0.67 : [0, 0.6, 1.0][m.difficulty];
+    if (R > 0) {
+      const path = m.ballPath;
+      for (let i = 1; i < 16; i++) {
+        const b = path[i];
+        if (b.y > 1.6) continue;
+        const t = i * PATH_STEP;
+        if (Math.hypot(b.x - p.pos.x, b.z - p.pos.z) < R + t * 2.5) { moveTo(p, b, true, 0.05); return; }
+      }
+    }
+  }
   if (c.chaser === p) {
     moveTo(p, c.chasePoint, true, 0.1);
     return;
@@ -280,8 +292,10 @@ export function aiOffBall(m: Match, p: Player, dt: number) {
       m.contain(p, o, 1.3);
     }
     if (d < 1.9 && p.tackleCD <= 0 && p.tackleT <= 0) {
-      if (Math.random() < 0.45) m.tryTackle(p);
-      else p.tackleCD = 0.25;
+      // напарник игрока в основном сопровождает: реже бросается в отбор (сильнее — на «Любителе»)
+      const rate = team.isHuman ? [0.3, 0.16, 0.1][m.difficulty] : 0.45;
+      if (Math.random() < rate) m.tryTackle(p);
+      else p.tackleCD = 0.35;
     }
     return;
   }
